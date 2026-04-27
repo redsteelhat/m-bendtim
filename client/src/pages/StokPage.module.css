@@ -1,0 +1,125 @@
+.badge {
+  display: inline-block;
+  padding: 0.25rem 0.6rem;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.bekliyor {
+  background: rgba(139, 147, 167, 0.22);
+  color: #a8b0c4;
+}
+
+.isleniyor {
+  background: rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
+}
+
+.tamamlandi {
+  background: rgba(74, 222, 128, 0.14);
+  color: #4ade80;
+}
+
+.rowBekliyor {
+  box-shadow: inset 3px 0 0 rgba(139, 147, 167, 0.55);
+}
+
+.rowIsleniyor {
+  box-shadow: inset 3px 0 0 #f59e0b;
+}
+
+.rowTamamlandi {
+  box-shadow: inset 3px 0 0 #22c55e;
+}
+
+.sectionTitle {
+  margin: 0 0 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.hint {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+/* Stok atama: kod / ürün / miktar / birim salt okunur bilgi */
+.readonlyBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.readonlyValue {
+  margin: 0;
+  padding: 0;
+  color: var(--text);
+  font-size: 0.98rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.checkCol {
+  width: 2.5rem;
+  vertical-align: middle;
+}
+
+.rowCheck {
+  width: 1.05rem;
+  height: 1.05rem;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.bulkBar {
+  margin-bottom: 1rem;
+  padding: 1rem 1.1rem;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.bulkBarTop {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1rem;
+  margin-bottom: 0.65rem;
+}
+
+.bulkCount {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.bulkActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.65rem 0.85rem;
+}
+
+.bulkField {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 12rem;
+}
+
+.bulkLabel {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
