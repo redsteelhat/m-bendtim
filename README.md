@@ -91,7 +91,7 @@ SPA route desteği için `client/vercel.json` eklendi.
 
 - `https://api.your-domain.com/api/health` 200 dönüyor mu
 - Vercel'de `VITE_API_BASE_URL` doğru mu
-- Backend `CORS_ORIGIN` içinde Vercel domaini var mı
+- Backend `CORS_ORIGIN` içinde Vercel domaini var mı (ornek: `https://m-bendtim-uugc.vercel.app`)
 - Login ve veri çekme istekleri başarılı mı
 
 ## Yerel build doğrulama
