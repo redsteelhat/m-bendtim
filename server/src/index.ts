@@ -1,6 +1,8 @@
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
+import fs from "node:fs";
+import path from "node:path";
 import { sequelize } from "./db";
 import { applyDatabaseCompatibilityFixes } from "./dbCompat";
 import { syncModels } from "./models";
@@ -36,6 +38,18 @@ app.use("/api/mal-kabul", malKabulRoutes);
 app.use("/api/shipments", shipmentsRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/reports", reportsRoutes);
+
+const clientDistPath = path.resolve(__dirname, "../../client/dist");
+const clientIndexPath = path.join(clientDistPath, "index.html");
+const hasClientBuild = fs.existsSync(clientIndexPath);
+
+if (hasClientBuild) {
+  app.use(express.static(clientDistPath));
+
+  app.get(/^\/(?!api(?:\/|$)).*/, (_req, res) => {
+    res.sendFile(clientIndexPath);
+  });
+}
 
 async function main(): Promise<void> {
   await sequelize.authenticate();

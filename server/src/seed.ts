@@ -6,21 +6,37 @@ import { User } from "./models/User";
 async function seed(): Promise<void> {
   await sequelize.authenticate();
   await User.sync({ alter: true });
-  const email = "admin@example.com";
+  const isProduction = process.env.NODE_ENV === "production";
+  const email =
+    process.env.SEED_ADMIN_EMAIL?.trim().toLowerCase() ||
+    (isProduction ? "" : "admin@example.com");
+  const password = process.env.SEED_ADMIN_PASSWORD?.trim() || (isProduction ? "" : "admin123");
+  const name = process.env.SEED_ADMIN_NAME?.trim() || "Yönetici";
+
+  if (!email && !password) {
+    console.log("Seed: admin kullanıcısı atlandı");
+    await sequelize.close();
+    return;
+  }
+
+  if (!email || !password) {
+    throw new Error("SEED_ADMIN_EMAIL ve SEED_ADMIN_PASSWORD birlikte tanımlanmalı");
+  }
+
   const existing = await User.findOne({ where: { email } });
   if (existing) {
     console.log("Seed: admin zaten var");
     await sequelize.close();
     return;
   }
-  const passwordHash = await bcrypt.hash("admin123", 10);
+  const passwordHash = await bcrypt.hash(password, 10);
   await User.create({
     email,
     passwordHash,
-    name: "Yönetici",
+    name,
     role: "admin",
   });
-  console.log("Seed: admin@example.com / admin123 oluşturuldu");
+  console.log(`Seed: ${email} oluşturuldu`);
   await sequelize.close();
 }
 

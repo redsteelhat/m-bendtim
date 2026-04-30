@@ -1,4 +1,5 @@
-const base = "";
+const rawBase = import.meta.env.VITE_API_BASE_URL?.trim() ?? "";
+const base = rawBase.replace(/\/+$/, "");
 
 function getToken(): string | null {
   return localStorage.getItem("token");
@@ -15,7 +16,8 @@ export async function api<T>(
   const token = getToken();
   if (token) headers.set("Authorization", `Bearer ${token}`);
 
-  const res = await fetch(`${base}${path}`, { ...options, headers });
+  const url = path.startsWith("http") ? path : `${base}${path}`;
+  const res = await fetch(url, { ...options, headers });
   if (res.status === 204) return undefined as T;
   const text = await res.text();
   const data = text ? (JSON.parse(text) as unknown) : null;
