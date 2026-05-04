@@ -1,5 +1,13 @@
 node_modules
 dist
-.env
 *.log
 .DS_Store
+
+# Local environment files. Keep real credentials out of git.
+.env
+.env.local
+.env.development
+.env.production
+.env*.local
+client/.env
+server/.env

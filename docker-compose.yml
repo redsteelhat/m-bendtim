@@ -1,16 +1,17 @@
 services:
   postgres:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_USER: admin
       POSTGRES_PASSWORD: admin123
-      POSTGRES_DB: adminpanel
+      POSTGRES_DB: adminpanel_dev
     ports:
       - "5432:5432"
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - pgdata_dev:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U admin -d adminpanel"]
+      test: ["CMD-SHELL", "pg_isready -U admin -d adminpanel_dev"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -22,13 +23,19 @@ services:
     ports:
       - "4000:4000"
     environment:
-      DATABASE_URL: postgresql://admin:admin123@postgres:5432/adminpanel
-      JWT_SECRET: change-me-in-production-use-long-random-string
-      NODE_ENV: production
+      DATABASE_URL: postgresql://admin:admin123@postgres:5432/adminpanel_dev
+      DB_SSL: "false"
+      DB_SSL_REJECT_UNAUTHORIZED: "false"
+      JWT_SECRET: dev-only-change-before-production
+      NODE_ENV: development
       PORT: 4000
+      CORS_ORIGIN: http://localhost:5173,http://127.0.0.1:5173
+      SEED_ADMIN_EMAIL: admin@dev.local
+      SEED_ADMIN_PASSWORD: admin123
+      SEED_ADMIN_NAME: Yonetici
     depends_on:
       postgres:
         condition: service_healthy
 
 volumes:
-  pgdata:
+  pgdata_dev:

@@ -5,6 +5,47 @@ Bu proje iki parçadan oluşur:
 - `client`: Vite + React panel
 - `server`: Express + Sequelize API
 
+## Dev ortamı
+
+Dev branchi local geliştirme için ayarlıdır:
+
+- Veritabanı: local Docker Postgres (`adminpanel_dev`)
+- Backend: `http://localhost:4000`
+- Frontend: `http://localhost:5173`
+- Varsayılan seed admin: `admin@dev.local` / `admin123`
+
+Yerel veritabanını ve API container'ını açmak için:
+
+```bash
+docker compose up -d postgres api
+```
+
+Container yerine uygulamaları doğrudan çalıştırmak istersen:
+
+```bash
+cd server
+npm install
+npm run seed
+npm run dev
+```
+
+```bash
+cd client
+npm install
+npm run dev
+```
+
+Local env dosyaları (`client/.env`, `server/.env`) git dışında tutulur. Örnek dosyalar:
+
+- `client/.env.example`
+- `server/.env.example`
+- `client/.env.production.example`
+- `server/.env.production.example`
+
+Gerçek production secret, Supabase connection string ve admin şifresi repoya eklenmemelidir.
+
+## Prod ortamı
+
 Canlı mimari önerisi:
 
 - Frontend: Vercel
