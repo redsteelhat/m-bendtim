@@ -13,26 +13,26 @@ export function Layout() {
           M-BEND T.İ.M
         </div>
         <nav className={styles.nav}>
-          <NavLink end className={styles.navLink} to="/">
+          <NavLink end className={styles.navLink} to="/app">
             Özet
           </NavLink>
-          <NavLink className={styles.navLink} to="/mal-kabul">
+          <NavLink className={styles.navLink} to="/app/mal-kabul">
             Mal kabul
           </NavLink>
-          <NavLink className={styles.navLink} to="/stok">
+          <NavLink className={styles.navLink} to="/app/stok">
             Stoklar
           </NavLink>
-          <NavLink className={styles.navLink} to="/sevk">
+          <NavLink className={styles.navLink} to="/app/sevk">
             Sevk
           </NavLink>
-          <NavLink className={styles.navLink} to="/raporlar">
+          <NavLink className={styles.navLink} to="/app/raporlar">
             Raporlar
           </NavLink>
-          <NavLink className={styles.navLink} to="/makina">
+          <NavLink className={styles.navLink} to="/app/makina">
             Makina
           </NavLink>
           {user?.role === "admin" && (
-            <NavLink className={styles.navLink} to="/users">
+            <NavLink className={styles.navLink} to="/app/users">
               Kullanıcılar
             </NavLink>
           )}
