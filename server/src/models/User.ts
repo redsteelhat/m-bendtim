@@ -16,6 +16,7 @@ export class User extends Model<
   declare passwordHash: string;
   declare name: string;
   declare role: "admin" | "editor";
+  declare sessionVersion: CreationOptional<number>;
   declare createdAt: CreationOptional<Date>;
   declare updatedAt: CreationOptional<Date>;
 }
@@ -45,6 +46,11 @@ User.init(
       type: DataTypes.ENUM("admin", "editor"),
       allowNull: false,
       defaultValue: "editor",
+    },
+    sessionVersion: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 1,
     },
     createdAt: DataTypes.DATE,
     updatedAt: DataTypes.DATE,

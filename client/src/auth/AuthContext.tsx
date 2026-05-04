@@ -24,20 +24,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   const logout = useCallback(() => {
-    localStorage.removeItem("token");
+    void api<void>("/api/auth/logout", { method: "POST" }).catch(() => undefined);
     setUser(null);
   }, []);
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (!token) {
-      setLoading(false);
-      return;
-    }
     api<User>("/api/auth/me")
       .then(setUser)
       .catch(() => {
-        localStorage.removeItem("token");
         setUser(null);
       })
       .finally(() => setLoading(false));
@@ -48,7 +42,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       method: "POST",
       body: JSON.stringify({ email, password }),
     });
-    localStorage.setItem("token", res.token);
     setUser(res.user);
   }, []);
 

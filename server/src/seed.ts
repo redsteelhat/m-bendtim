@@ -2,6 +2,7 @@ import "dotenv/config";
 import bcrypt from "bcryptjs";
 import { sequelize } from "./db";
 import { User } from "./models/User";
+import { validatePassword } from "./services/passwordPolicy";
 
 async function seed(): Promise<void> {
   await sequelize.authenticate();
@@ -22,6 +23,10 @@ async function seed(): Promise<void> {
   if (!email || !password) {
     throw new Error("SEED_ADMIN_EMAIL ve SEED_ADMIN_PASSWORD birlikte tanımlanmalı");
   }
+  const passwordError = validatePassword(password, isProduction);
+  if (passwordError) {
+    throw new Error(`SEED_ADMIN_PASSWORD geçersiz: ${passwordError}`);
+  }
 
   const existing = await User.findOne({ where: { email } });
   if (existing) {
@@ -29,7 +34,7 @@ async function seed(): Promise<void> {
     await sequelize.close();
     return;
   }
-  const passwordHash = await bcrypt.hash(password, 10);
+  const passwordHash = await bcrypt.hash(password, 12);
   await User.create({
     email,
     passwordHash,

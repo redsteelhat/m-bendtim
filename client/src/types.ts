@@ -10,7 +10,7 @@ export interface User {
 }
 
 export interface LoginResponse {
-  token: string;
+  csrfToken: string;
   user: User;
 }
 

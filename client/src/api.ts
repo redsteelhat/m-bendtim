@@ -3,8 +3,18 @@ const base = rawBase.replace(/\/+$/, "");
 const isSupabaseProjectUrl =
   /^https:\/\/[a-z0-9-]+\.supabase\.co$/i.test(base);
 
-function getToken(): string | null {
-  return localStorage.getItem("token");
+function getCookie(name: string): string | null {
+  const prefix = `${name}=`;
+  const match = document.cookie
+    .split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(prefix));
+  return match ? decodeURIComponent(match.slice(prefix.length)) : null;
+}
+
+function isUnsafeMethod(method: string | undefined): boolean {
+  const m = (method ?? "GET").toUpperCase();
+  return !["GET", "HEAD", "OPTIONS"].includes(m);
 }
 
 export async function api<T>(
@@ -21,11 +31,13 @@ export async function api<T>(
   if (options.body && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
-  const token = getToken();
-  if (token) headers.set("Authorization", `Bearer ${token}`);
+  if (isUnsafeMethod(options.method) && !headers.has("X-CSRF-Token")) {
+    const csrfToken = getCookie("mbendtim_csrf");
+    if (csrfToken) headers.set("X-CSRF-Token", csrfToken);
+  }
 
   const url = path.startsWith("http") ? path : `${base}${path}`;
-  const res = await fetch(url, { ...options, headers });
+  const res = await fetch(url, { ...options, headers, credentials: "include" });
   if (res.status === 204) return undefined as T;
   const text = await res.text();
   let data: unknown = null;

@@ -1,5 +1,4 @@
 import { Router, Response } from "express";
-import bcrypt from "bcryptjs";
 import { User } from "../models/User";
 import {
   AuthRequest,
@@ -7,6 +6,7 @@ import {
   requireAdmin,
   attachUser,
 } from "../middleware/auth";
+import { hashPassword, validatePassword } from "../services/passwordPolicy";
 
 const router = Router();
 
@@ -47,6 +47,11 @@ router.post("/", requireAdmin, async (req, res: Response) => {
     res.status(400).json({ error: "E-posta, şifre ve ad zorunlu" });
     return;
   }
+  const passwordError = validatePassword(password);
+  if (passwordError) {
+    res.status(400).json({ error: passwordError });
+    return;
+  }
   const exists = await User.findOne({
     where: { email: email.toLowerCase().trim() },
   });
@@ -54,7 +59,7 @@ router.post("/", requireAdmin, async (req, res: Response) => {
     res.status(409).json({ error: "Bu e-posta zaten kayıtlı" });
     return;
   }
-  const passwordHash = await bcrypt.hash(password, 10);
+  const passwordHash = await hashPassword(password);
   const user = await User.create({
     email: email.toLowerCase().trim(),
     passwordHash,
@@ -92,7 +97,13 @@ router.patch("/:id", requireAdmin, async (req, res: Response) => {
   if (name !== undefined) user.name = name.trim();
   if (role !== undefined) user.role = role === "admin" ? "admin" : "editor";
   if (password !== undefined && password.length > 0) {
-    user.passwordHash = await bcrypt.hash(password, 10);
+    const passwordError = validatePassword(password);
+    if (passwordError) {
+      res.status(400).json({ error: passwordError });
+      return;
+    }
+    user.passwordHash = await hashPassword(password);
+    user.sessionVersion += 1;
   }
   try {
     await user.save();
