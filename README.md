@@ -1,107 +1,150 @@
-# M-BENDTIM Deploy (Vercel + Supabase)
+# M-BENDTIM Deploy
 
-Bu proje iki parçadan oluşur:
+Bu proje üç servis ile canlıya alınır:
 
-- `client`: Vite + React panel
-- `server`: Express + Sequelize API
-
-Canlı mimari önerisi:
-
-- Frontend: Vercel
+- Frontend: Vercel (`client`)
+- Backend: Render (`server`)
 - Veritabanı: Supabase Postgres
-- Backend: Render / Railway / VPS (Node.js)
 
-## 1) Supabase veritabanını hazırla
+İstek akışı:
 
-Supabase projesi oluşturup connection string bilgisini al.
-
-Tavsiye edilen bağlantı:
-
-- Transaction pooler (`:6543`)
-- `sslmode=require`
-
-Örnek:
-
-```env
-DATABASE_URL=postgresql://postgres.xxxxx:[PASSWORD]@aws-0-eu-central-1.pooler.supabase.com:6543/postgres?sslmode=require
-DB_SSL=true
+```text
+Tarayıcı -> Vercel frontend -> Render backend API -> Supabase Postgres
 ```
 
-Notlar:
+Frontend Supabase'e doğrudan bağlanmaz. Supabase yalnızca PostgreSQL veritabanı olarak kullanılır.
 
-- Backend, Supabase bağlantısını SSL ile otomatik algılar.
-- Gerekirse `DB_SSL=true` ile SSL'i zorlayabilirsin.
+## 1. Supabase
 
-## 2) Backend ortam değişkenleri
+Supabase projesinde PostgreSQL bağlantı bilgisini al.
 
-`server/.env.example` dosyasına göre production env tanımla:
+Önerilen bağlantı:
+
+- Transaction pooler
+- Port: `6543`
+- `sslmode=require`
+
+Örnek `DATABASE_URL`:
 
 ```env
-DATABASE_URL=postgresql://postgres.xxxxx:[PASSWORD]@aws-0-eu-central-1.pooler.supabase.com:6543/postgres?sslmode=require
+DATABASE_URL=postgresql://postgres.PROJECT_REF:ENCODED_PASSWORD@aws-0-eu-central-1.pooler.supabase.com:6543/postgres?sslmode=require
+```
+
+Parolada `#`, `+`, `!`, `@`, `:` gibi özel karakterler varsa URL encode edilmelidir. Yanlış veya encode edilmemiş parola genelde şu hatayı üretir:
+
+```text
+password authentication failed for user "postgres"
+```
+
+## 2. Render Backend
+
+Render'da backend için `server` klasörünü deploy et.
+
+Render ayarları:
+
+```text
+Root Directory: server
+Build Command: npm ci && npm run build
+Start Command: npm start
+```
+
+Backend environment variables:
+
+```env
+DATABASE_URL=postgresql://postgres.PROJECT_REF:ENCODED_PASSWORD@aws-0-eu-central-1.pooler.supabase.com:6543/postgres?sslmode=require
 DB_SSL=true
-JWT_SECRET=very-long-random-secret
+DB_SSL_REJECT_UNAUTHORIZED=false
+JWT_SECRET=change-this-to-a-long-random-secret
+NODE_ENV=production
 PORT=4000
-CORS_ORIGIN=https://your-app.vercel.app,https://your-custom-domain.com
+CORS_ORIGIN=https://your-vercel-app.vercel.app
 SEED_ADMIN_EMAIL=admin@example.com
 SEED_ADMIN_PASSWORD=change-me-now
 SEED_ADMIN_NAME=Yonetici
 ```
 
-## 3) Backend'i canlıya al
+Health check:
 
-Backend'i herhangi bir Node.js hostuna deploy edebilirsin (Render, Railway, VPS).
-
-Başlatma adımları:
-
-```bash
-npm install
-npm run build
-npm start
+```text
+GET https://your-render-service.onrender.com/api/health
 ```
 
-Uygulama açılışında:
+Başarılı cevap:
 
-- veritabanı bağlantısı test edilir
-- modeller senkronize edilir
-- eski şema uyumluluk düzeltmeleri uygulanır
-
-Health endpoint:
-
-```bash
-GET /api/health
+```json
+{ "ok": true }
 ```
 
-## 4) Frontend'i Vercel'e deploy et
+## 3. Vercel Frontend
 
-Vercel proje ayarları:
+Vercel'de frontend için `client` klasörünü deploy et.
 
-- Root Directory: `client`
-- Build Command: `npm run build`
-- Output Directory: `dist`
+Vercel ayarları:
 
-Vercel environment variable:
+```text
+Root Directory: client
+Build Command: npm run build
+Output Directory: dist
+```
+
+Frontend environment variable:
 
 ```env
-VITE_API_BASE_URL=https://api.your-domain.com
+VITE_API_BASE_URL=https://your-render-service.onrender.com
 ```
 
-SPA route desteği için `client/vercel.json` eklendi.
+`VITE_API_BASE_URL` Supabase URL'i olmamalıdır. Bu değer Render'daki backend API adresi olmalıdır.
 
-## 5) Son kontrol listesi
+SPA route desteği için `client/vercel.json` dosyası vardır.
 
-- `https://api.your-domain.com/api/health` 200 dönüyor mu
-- Vercel'de `VITE_API_BASE_URL` doğru mu
-- Backend `CORS_ORIGIN` içinde Vercel domaini var mı (ornek: `https://m-bendtim-uugc.vercel.app`)
-- Login ve veri çekme istekleri başarılı mı
+## 4. Deploy Kontrol Listesi
 
-## Yerel build doğrulama
+- Supabase `DATABASE_URL` doğru ve parola URL encode edilmiş mi?
+- Render backend `/api/health` endpoint'i 200 dönüyor mu?
+- Render `CORS_ORIGIN` içinde Vercel domaini var mı?
+- Vercel `VITE_API_BASE_URL` Render backend adresini gösteriyor mu?
+- Login isteği `/api/auth/login` üzerinden Render backend'e gidiyor mu?
+- Admin seed bilgileri production için güvenli değerlerle değiştirildi mi?
+- `JWT_SECRET` uzun ve tahmin edilemez bir değer mi?
+
+## 5. Yerel Geliştirme
+
+Backend:
+
+```bash
+cd server
+npm install
+npm run dev
+```
+
+Frontend:
+
+```bash
+cd client
+npm install
+npm run dev
+```
+
+Yerel frontend env:
+
+```env
+VITE_API_BASE_URL=http://localhost:4000
+```
+
+Yerel backend env için `server/.env.example` dosyasını referans al.
+
+## 6. Build Doğrulama
+
+Frontend:
 
 ```bash
 cd client
 npm run build
 ```
 
+Backend:
+
 ```bash
-cd ../server
+cd server
 npm run build
 ```
