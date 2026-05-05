@@ -10,9 +10,6 @@ const useSsl =
   /sslmode=require/i.test(databaseUrl) ||
   /supabase\.co/i.test(databaseUrl);
 const rejectUnauthorized = process.env.DB_SSL_REJECT_UNAUTHORIZED === "true";
-if (useSsl && !rejectUnauthorized) {
-  process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
-}
 
 export const sequelize = new Sequelize(databaseUrl, {
   dialect: "postgres",

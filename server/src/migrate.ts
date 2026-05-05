@@ -1,8 +1,10 @@
 import "dotenv/config";
 import { sequelize } from "./db";
+import { validateProductionEnv } from "./config/env";
 import { migrator } from "./migrations";
 
 async function main(): Promise<void> {
+  validateProductionEnv();
   const command = process.argv[2] ?? "up";
 
   if (command === "up") {

@@ -61,6 +61,12 @@ Build Command: npm ci && npm run build
 Start Command: npm start
 ```
 
+Docker deploy kullanıyorsan `server/Dockerfile` migration'ı API başlamadan önce otomatik çalıştırır:
+
+```text
+node dist/migrate.js up && node dist/index.js
+```
+
 İlk deploy öncesi veya şema değişikliklerinden sonra migration çalıştır:
 
 ```bash
@@ -68,7 +74,7 @@ npm run build
 npm run migrate:prod -- up
 ```
 
-Render'da bunu manuel shell/job olarak çalıştırabilir veya deploy sürecine ayrı bir migration adımı olarak ekleyebilirsin. API start komutu migration veya seed çalıştırmaz.
+Render'da Docker dışı deploy kullanıyorsan bunu manuel shell/job olarak çalıştırabilir veya deploy sürecine ayrı bir migration adımı olarak ekleyebilirsin. API start komutu seed çalıştırmaz.
 
 Backend environment variables:
 
