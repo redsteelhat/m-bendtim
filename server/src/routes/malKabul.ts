@@ -1,13 +1,14 @@
 import { Router, Response } from "express";
 import { GoodsReceiptLine } from "../models/GoodsReceiptLine";
+import { StockItem } from "../models/StockItem";
 import { sequelize } from "../db";
 import { dateOnlyLocal } from "../dateOnlyLocal";
 import { requireAuth, attachUser, AuthRequest, requirePermission } from "../middleware/auth";
 import {
-  decrementStockForMalKabul,
   incrementStockForMalKabul,
 } from "../services/malKabulStock";
 import { recordAudit } from "../services/audit";
+import { recordStockMovement, snapshotStock } from "../services/stockMovement";
 import {
   optionalTrimmedString,
   positiveQuantity,
@@ -49,8 +50,20 @@ const createMalKabulSchema = z
     "Ürün adı gerekli"
   );
 
-router.get("/", requirePermission("malKabul.read"), async (_req: AuthRequest, res: Response) => {
+const cancelMalKabulSchema = z.object({
+  reason: trimmedString("İptal nedeni", 500),
+});
+
+router.get("/", requirePermission("malKabul.read"), async (req: AuthRequest, res: Response) => {
+  const filter = String(req.query.status ?? "active");
+  const where =
+    filter === "cancelled"
+      ? { isCancelled: true }
+      : filter === "all"
+        ? {}
+        : { isCancelled: false };
   const rows = await GoodsReceiptLine.findAll({
+    where,
     order: [
       ["irsaliyeTarihi", "DESC"],
       ["id", "DESC"],
@@ -288,15 +301,17 @@ router.post("/", requirePermission("malKabul.write"), validateBody(createMalKabu
   }
 });
 
-router.delete("/:id", requirePermission("malKabul.write"), async (req: AuthRequest, res: Response) => {
+router.patch("/:id/cancel", requirePermission("malKabul.write"), validateBody(cancelMalKabulSchema), async (req: AuthRequest, res: Response) => {
   const id = Number(req.params.id);
   if (Number.isNaN(id)) {
     res.status(400).json({ error: "Geçersiz id" });
     return;
   }
+  const { reason } = req.body as { reason?: string };
+  const trimmedReason = reason?.trim() ?? "";
 
   try {
-    await sequelize.transaction(async (transaction) => {
+    const cancelled = await sequelize.transaction(async (transaction) => {
       const line = await GoodsReceiptLine.findByPk(id, {
         transaction,
         lock: transaction.LOCK.UPDATE,
@@ -304,38 +319,115 @@ router.delete("/:id", requirePermission("malKabul.write"), async (req: AuthReque
       if (!line) {
         throw new Error("NOT_FOUND");
       }
-      await decrementStockForMalKabul(
-        line.materialCode,
-        null,
-        Number(line.quantity),
+      if (line.isCancelled) {
+        throw new Error("ALREADY_CANCELLED");
+      }
+
+      const stockItems = await StockItem.findAll({
+        where: { goodsReceiptLineId: line.id },
+        order: [["id", "ASC"]],
         transaction,
-        { actorUserId: req.sessionUser?.id, referenceId: line.id }
-      );
+        lock: transaction.LOCK.UPDATE,
+      });
+
+      const expectedQty = Math.floor(Number(line.quantity));
+      const related = stockItems;
+
+      if (related.length < expectedQty) {
+        throw new Error("STOCK_MISSING");
+      }
+
+      for (const stock of related) {
+        if (stock.machineId != null) throw new Error("HAS_MACHINE");
+        if (stock.processStatus === "isleniyor") throw new Error("IN_PROCESS");
+        if (stock.processStatus === "tamamlandi") throw new Error("COMPLETED");
+        if (stock.isShipped) throw new Error("SHIPPED");
+        if (stock.processStatus !== "bekliyor") throw new Error("PROGRESSED");
+      }
+
+      line.isCancelled = true;
+      line.cancelledAt = new Date();
+      line.cancelledByUserId = req.sessionUser?.id ?? null;
+      line.cancelReason = trimmedReason.slice(0, 500);
+      await line.save({ transaction });
+
+      for (const stock of related) {
+        const before = snapshotStock(stock);
+        await stock.destroy({ transaction });
+        await recordStockMovement(
+          {
+            type: "mal_kabul_iptal",
+            actorUserId: req.sessionUser?.id,
+            before,
+            sku: before.sku,
+            name: before.name,
+            quantityDelta: -(before.quantity ?? 0),
+            referenceType: "goods_receipt_line",
+            referenceId: line.id,
+            metadata: { cancelReason: trimmedReason },
+          },
+          transaction
+        );
+      }
+
       await recordAudit(
         {
           actorUserId: req.sessionUser?.id,
-          action: "mal_kabul.delete",
+          action: "mal_kabul.cancel",
           entityType: "goods_receipt_line",
           entityId: line.id,
           metadata: {
             irsaliyeNo: line.irsaliyeNo,
             materialCode: line.materialCode,
             quantity: Number(line.quantity),
+            reason: trimmedReason,
           },
         },
         transaction
       );
-      await line.destroy({ transaction });
+      return GoodsReceiptLine.findByPk(line.id, { transaction });
     });
-    res.status(204).send();
+    res.json(cancelled);
   } catch (e) {
     if (e instanceof Error && e.message === "NOT_FOUND") {
       res.status(404).json({ error: "Kayıt bulunamadı" });
       return;
     }
+    if (e instanceof Error && e.message === "ALREADY_CANCELLED") {
+      res.status(409).json({ error: "Bu mal kabul satırı zaten iptal edilmiş" });
+      return;
+    }
+    if (e instanceof Error && e.message === "STOCK_MISSING") {
+      res.status(409).json({
+        error: "Bu mal kabul satırına ait bekleyen stok satırları eksik; iptal güvenli değil",
+      });
+      return;
+    }
+    if (e instanceof Error && e.message === "HAS_MACHINE") {
+      res.status(409).json({ error: "Makina atanmış stok bulunduğu için iptal edilemez" });
+      return;
+    }
+    if (e instanceof Error && e.message === "IN_PROCESS") {
+      res.status(409).json({ error: "İşleniyor durumunda stok bulunduğu için iptal edilemez" });
+      return;
+    }
+    if (e instanceof Error && e.message === "COMPLETED") {
+      res.status(409).json({ error: "Tamamlanmış stok bulunduğu için iptal edilemez" });
+      return;
+    }
+    if (e instanceof Error && e.message === "SHIPPED") {
+      res.status(409).json({ error: "Sevk edilmiş stok bulunduğu için iptal edilemez" });
+      return;
+    }
     console.error(e);
-    res.status(500).json({ error: "Silme veya stok düzeltmesi başarısız" });
+    res.status(500).json({ error: "Mal kabul iptali başarısız" });
   }
+});
+
+router.delete("/:id", requirePermission("malKabul.write"), async (_req: AuthRequest, res: Response) => {
+  res.status(405).json({
+    error: "Mal kabul kayıtları silinmez. İptal için PATCH /api/mal-kabul/:id/cancel kullanın",
+  });
 });
 
 export default router;

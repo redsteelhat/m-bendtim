@@ -46,6 +46,10 @@ CREATE TABLE IF NOT EXISTS "goods_receipt_lines" (
   "materialCode" VARCHAR(80) NOT NULL,
   "materialDescription" VARCHAR(240) NOT NULL,
   "quantity" DECIMAL(14, 3) NOT NULL,
+  "isCancelled" BOOLEAN NOT NULL DEFAULT false,
+  "cancelledAt" TIMESTAMPTZ NULL,
+  "cancelledByUserId" INTEGER NULL REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE,
+  "cancelReason" VARCHAR(500) NULL,
   "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

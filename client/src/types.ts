@@ -107,6 +107,10 @@ export interface MalKabulLine {
   /** Mal kabulde girilen ürün adı (API/DB: `materialDescription`) */
   materialDescription?: string;
   quantity: string | number;
+  isCancelled?: boolean;
+  cancelledAt?: string | null;
+  cancelledByUserId?: number | null;
+  cancelReason?: string | null;
   createdAt?: string;
   updatedAt?: string;
 }

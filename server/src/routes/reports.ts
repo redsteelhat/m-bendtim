@@ -24,8 +24,10 @@ function dateOnlyToStr(v: unknown): string {
   return String(v).slice(0, 10);
 }
 
-router.get("/range", requirePermission("reports.read"), async (_req: AuthRequest, res: Response) => {
+router.get("/range", requirePermission("reports.read"), async (req: AuthRequest, res: Response) => {
+  const includeCancelled = String(req.query.includeCancelled ?? "false") === "true";
   const malKabulRows = await GoodsReceiptLine.findAll({
+    where: includeCancelled ? {} : { isCancelled: false },
     order: [
       ["irsaliyeTarihi", "DESC"],
       ["id", "DESC"],

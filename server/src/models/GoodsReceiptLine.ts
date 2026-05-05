@@ -18,6 +18,10 @@ export class GoodsReceiptLine extends Model<
   declare materialCode: string;
   declare materialDescription: string;
   declare quantity: number;
+  declare isCancelled: CreationOptional<boolean>;
+  declare cancelledAt: CreationOptional<Date | null>;
+  declare cancelledByUserId: CreationOptional<number | null>;
+  declare cancelReason: CreationOptional<string | null>;
   declare createdAt: CreationOptional<Date>;
   declare updatedAt: CreationOptional<Date>;
 }
@@ -37,6 +41,20 @@ GoodsReceiptLine.init(
       type: DataTypes.DECIMAL(14, 3),
       allowNull: false,
     },
+    isCancelled: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false,
+    },
+    cancelledAt: { type: DataTypes.DATE, allowNull: true },
+    cancelledByUserId: {
+      type: DataTypes.INTEGER.UNSIGNED,
+      allowNull: true,
+      references: { model: "users", key: "id" },
+      onDelete: "SET NULL",
+      onUpdate: "CASCADE",
+    },
+    cancelReason: { type: DataTypes.STRING(500), allowNull: true },
     createdAt: DataTypes.DATE,
     updatedAt: DataTypes.DATE,
   },

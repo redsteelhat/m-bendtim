@@ -17,6 +17,7 @@ function newLineKey(): string {
 }
 
 type DraftLine = { key: string; materialCode: string; productName: string; quantity: string };
+type MalKabulFilter = "active" | "cancelled" | "all";
 
 export function MalKabulPage() {
   const { hasPermission } = useAuth();
@@ -25,19 +26,21 @@ export function MalKabulPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
+  const [cancelTarget, setCancelTarget] = useState<MalKabulLine | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
+  const [filter, setFilter] = useState<MalKabulFilter>("active");
 
   const load = useCallback(async () => {
     setLoadError(null);
     setLoading(true);
     try {
-      setRows(await api<MalKabulLine[]>("/api/mal-kabul"));
+      setRows(await api<MalKabulLine[]>(`/api/mal-kabul?status=${filter}`));
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : "Liste alınamadı");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [filter]);
 
   useEffect(() => {
     void load();
@@ -68,6 +71,29 @@ export function MalKabulPage() {
         açılır; ürün adı <strong>Stoklar</strong> listesinde görünür. Makina ve işlem durumu{" "}
         <strong>Ata</strong> ile yapılır.
       </p>
+      <div className={mkStyles.filterBar} aria-label="Mal kabul filtreleri">
+        <button
+          type="button"
+          className={filter === "active" ? mkStyles.filterActive : mkStyles.filterButton}
+          onClick={() => setFilter("active")}
+        >
+          Aktif
+        </button>
+        <button
+          type="button"
+          className={filter === "cancelled" ? mkStyles.filterActive : mkStyles.filterButton}
+          onClick={() => setFilter("cancelled")}
+        >
+          İptal edilen
+        </button>
+        <button
+          type="button"
+          className={filter === "all" ? mkStyles.filterActive : mkStyles.filterButton}
+          onClick={() => setFilter("all")}
+        >
+          Tümü
+        </button>
+      </div>
       {loadError && <p className={styles.banner}>{loadError}</p>}
       {loading ? (
         <p className="muted">Yükleniyor…</p>
@@ -81,6 +107,7 @@ export function MalKabulPage() {
                 <th>Malzeme kodu</th>
                 <th>Ürün adı</th>
                 <th>Miktar</th>
+                <th>Durum</th>
                 <th />
               </tr>
             </thead>
@@ -92,28 +119,27 @@ export function MalKabulPage() {
                   <td>{r.materialCode}</td>
                   <td>{(r.materialDescription ?? "").trim() || "—"}</td>
                   <td>{formatQtyInteger(r.quantity)}</td>
+                  <td>
+                    {r.isCancelled ? (
+                      <span className={mkStyles.cancelledBadge}>İptal edildi</span>
+                    ) : (
+                      <span className={mkStyles.activeBadge}>Aktif</span>
+                    )}
+                  </td>
                   <td className={styles.actions}>
-                    {canWrite && (
+                    {canWrite && !r.isCancelled && (
                       <button
                         type="button"
                         className={styles.dangerBtn}
-                        onClick={async () => {
-                          if (
-                            !confirm(
-                              "Bu mal kabul satırı silinecek ve stoktan miktar düşülecek. Devam?"
-                            )
-                          )
-                            return;
-                          try {
-                            await api(`/api/mal-kabul/${r.id}`, { method: "DELETE" });
-                            await load();
-                          } catch (e) {
-                            alert(e instanceof Error ? e.message : "Silinemedi");
-                          }
-                        }}
+                        onClick={() => setCancelTarget(r)}
                       >
-                        Sil
+                        İptal Et
                       </button>
+                    )}
+                    {r.isCancelled && r.cancelReason && (
+                      <span className="muted" title={r.cancelReason}>
+                        {r.cancelReason}
+                      </span>
                     )}
                   </td>
                 </tr>
@@ -133,6 +159,91 @@ export function MalKabulPage() {
           }}
         />
       )}
+      {cancelTarget && canWrite && (
+        <CancelMalKabulModal
+          line={cancelTarget}
+          onClose={() => setCancelTarget(null)}
+          onCancelled={async () => {
+            setCancelTarget(null);
+            await load();
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function CancelMalKabulModal({
+  line,
+  onClose,
+  onCancelled,
+}: {
+  line: MalKabulLine;
+  onClose: () => void;
+  onCancelled: () => Promise<void>;
+}) {
+  const [reason, setReason] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function onSubmit(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    const trimmed = reason.trim();
+    if (!trimmed) {
+      setError("İptal nedeni gerekli");
+      return;
+    }
+    setBusy(true);
+    try {
+      await api<MalKabulLine>(`/api/mal-kabul/${line.id}/cancel`, {
+        method: "PATCH",
+        body: JSON.stringify({ reason: trimmed }),
+      });
+      await onCancelled();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "İptal edilemedi");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className={styles.overlay} role="presentation" onClick={onClose}>
+      <div
+        className={styles.modal}
+        role="dialog"
+        aria-modal
+        onClick={(ev) => ev.stopPropagation()}
+      >
+        <h2 className={styles.modalTitle}>Mal kabul iptali</h2>
+        <form className={styles.modalForm} onSubmit={onSubmit}>
+          <p className="muted" style={{ margin: 0 }}>
+            {line.irsaliyeNo} / {line.materialCode} satırı iptal edilecek. İptal yalnızca ilgili
+            stoklar bekliyor, makinasız ve sevk edilmemişse yapılır.
+          </p>
+          <label className={styles.field}>
+            İptal nedeni
+            <textarea
+              className={styles.input}
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              rows={4}
+              maxLength={500}
+              required
+            />
+          </label>
+          {error && <p className={styles.formErr}>{error}</p>}
+          <div className={styles.modalActions}>
+            <button type="button" className={styles.ghost} onClick={onClose}>
+              Vazgeç
+            </button>
+            <button type="submit" className={styles.dangerBtn} disabled={busy}>
+              {busy ? "İptal ediliyor…" : "İptal Et"}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }

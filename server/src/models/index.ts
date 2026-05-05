@@ -8,6 +8,8 @@ import { StockMovement } from "./StockMovement";
 
 Machine.hasMany(StockItem, { foreignKey: "machineId", as: "stockItems" });
 StockItem.belongsTo(Machine, { foreignKey: "machineId", as: "machine" });
+User.hasMany(GoodsReceiptLine, { foreignKey: "cancelledByUserId", as: "cancelledGoodsReceipts" });
+GoodsReceiptLine.belongsTo(User, { foreignKey: "cancelledByUserId", as: "cancelledByUser" });
 GoodsReceiptLine.hasMany(StockItem, { foreignKey: "goodsReceiptLineId", as: "stockItems" });
 StockItem.belongsTo(GoodsReceiptLine, { foreignKey: "goodsReceiptLineId", as: "goodsReceiptLine" });
 StockItem.hasMany(StockMovement, { foreignKey: "stockItemId", as: "movements" });

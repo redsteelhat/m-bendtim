@@ -178,6 +178,20 @@ Stok hareketleri `stock_movements` tablosunda tutulur. Stok detay ekranındaki `
 
 Operatörler sevk edilmiş stokları normal stok ekranından serbestçe düzenleyemez veya silemez. Sevk geri alma/hedef güncelleme işlemleri sevk ekranı akışından yapılır; admin gerektiğinde override yapabilir.
 
+## Mal Kabul İptali
+
+Mal kabul kayıtları kullanıcı akışında hard delete edilmez. Hatalı girişler `İptal Et` işlemiyle iptal edilir ve iptal nedeni zorunludur.
+
+İptal sadece ilgili stok satırlarının tamamı şu durumdaysa yapılır:
+
+- Makina atanmamış.
+- İşlem durumu `bekliyor`.
+- Sevk edilmemiş.
+
+İlgili stoklardan biri makinaya atanmışsa, `isleniyor` veya `tamamlandi` durumundaysa ya da sevk edilmişse iptal bloklanır. Başarılı iptal transaction içinde mal kabul satırını `isCancelled=true` yapar, iptal nedeni ve kullanıcı bilgisini saklar, ilgili bekleyen stok satırlarını kaldırır, `mal_kabul_iptal` stok hareketi ve `mal_kabul.cancel` audit kaydı oluşturur.
+
+Raporlar varsayılan olarak iptal edilmiş mal kabul kayıtlarını saymaz. Gerekirse API tarafında `GET /api/reports/range?includeCancelled=true` ile dahil edilebilir.
+
 ## Yerel Geliştirme
 
 Backend:
