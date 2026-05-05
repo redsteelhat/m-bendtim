@@ -91,6 +91,8 @@ SEED_ADMIN_PASSWORD=change-me-now
 SEED_ADMIN_NAME=Yonetici
 ```
 
+Supabase pooler kullanırken Render ortamında `DB_SSL_REJECT_UNAUTHORIZED=false` bırakılmalıdır. Uygulama `sslmode=require` değerini bağlantı stringinden okuyup SSL'i Sequelize ayarlarıyla yönetir; bu, Render'da `SELF_SIGNED_CERT_IN_CHAIN` hatasını engeller.
+
 Health check:
 
 ```text
