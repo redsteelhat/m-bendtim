@@ -8,16 +8,23 @@ import {
   type ReactNode,
 } from "react";
 import { api } from "../api";
-import type { User, LoginResponse } from "../types";
+import type { User, LoginResponse, Permission, UserRole } from "../types";
 
 interface AuthState {
   user: User | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
+  hasPermission: (permission: Permission) => boolean;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
+
+const rolePermissions: Record<UserRole, Permission[]> = {
+  admin: ["users.manage", "machines.write", "stock.write", "malKabul.write", "shipments.write"],
+  operator: ["machines.write", "stock.write", "malKabul.write", "shipments.write"],
+  viewer: [],
+};
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -52,9 +59,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(res.user);
   }, []);
 
+  const hasPermission = useCallback(
+    (permission: Permission) => Boolean(user && rolePermissions[user.role].includes(permission)),
+    [user]
+  );
+
   const value = useMemo(
-    () => ({ user, loading, login, logout }),
-    [user, loading, login, logout]
+    () => ({ user, loading, login, logout, hasPermission }),
+    [user, loading, login, logout, hasPermission]
   );
 
   return (

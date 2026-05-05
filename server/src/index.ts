@@ -36,15 +36,23 @@ app.get("/api/health", (_req, res) => {
 });
 
 app.get("/api/ready", async (_req, res) => {
-  await sequelize.authenticate();
-  const pending = await migrator.pending();
-  res.status(pending.length === 0 ? 200 : 503).json({
-    ok: pending.length === 0,
-    database: "ok",
-    migrations: {
-      pending: pending.map((migration) => migration.name),
-    },
-  });
+  try {
+    await sequelize.authenticate();
+    const pending = await migrator.pending();
+    res.status(pending.length === 0 ? 200 : 503).json({
+      ok: pending.length === 0,
+      database: "ok",
+      migrations: {
+        pending: pending.map((migration) => migration.name),
+      },
+    });
+  } catch {
+    res.status(503).json({
+      ok: false,
+      database: "unavailable",
+      migrations: { pending: [] },
+    });
+  }
 });
 
 app.use("/api/auth", authRoutes);

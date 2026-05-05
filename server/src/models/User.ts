@@ -7,6 +7,8 @@ import {
 } from "sequelize";
 import { sequelize } from "../db";
 
+export type UserRole = "admin" | "operator" | "viewer";
+
 export class User extends Model<
   InferAttributes<User>,
   InferCreationAttributes<User>
@@ -15,7 +17,7 @@ export class User extends Model<
   declare email: string;
   declare passwordHash: string;
   declare name: string;
-  declare role: "admin" | "editor";
+  declare role: UserRole;
   declare createdAt: CreationOptional<Date>;
   declare updatedAt: CreationOptional<Date>;
 }
@@ -42,9 +44,9 @@ User.init(
       allowNull: false,
     },
     role: {
-      type: DataTypes.ENUM("admin", "editor"),
+      type: DataTypes.ENUM("admin", "operator", "viewer"),
       allowNull: false,
-      defaultValue: "editor",
+      defaultValue: "operator",
     },
     createdAt: DataTypes.DATE,
     updatedAt: DataTypes.DATE,

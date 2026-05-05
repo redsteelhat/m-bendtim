@@ -1,5 +1,6 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../api";
+import { useAuth } from "../auth/AuthContext";
 import type { Machine, StockItem, StockProcessStatus } from "../types";
 import { formatQtyInteger } from "../formatQty";
 import dStyles from "./dataPage.module.css";
@@ -24,6 +25,8 @@ function badgeClass(s: StockProcessStatus): string {
 }
 
 export function StokPage() {
+  const { hasPermission } = useAuth();
+  const canWrite = hasPermission("stock.write");
   const [rows, setRows] = useState<StockItem[]>([]);
   const [machines, setMachines] = useState<Machine[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -139,12 +142,18 @@ export function StokPage() {
         <h1 className={dStyles.h1}>Stoklar</h1>
       </div>
       <p className="muted" style={{ margin: "0 0 1rem", maxWidth: "48rem" }}>
-        Satırları işaretleyerek <strong>toplu makina</strong> veya <strong>toplu durum</strong>{" "}
-        atayabilirsiniz. Tek satır için <strong>Ata</strong> kullanın. Stok girişi{" "}
-        <strong>Mal kabul</strong> ile yapılır. Makina tanımı <strong>Makina</strong> sayfasındadır.
+        {canWrite ? (
+          <>
+            Satırları işaretleyerek <strong>toplu makina</strong> veya <strong>toplu durum</strong>{" "}
+            atayabilirsiniz. Tek satır için <strong>Ata</strong> kullanın. Stok girişi{" "}
+            <strong>Mal kabul</strong> ile yapılır. Makina tanımı <strong>Makina</strong> sayfasındadır.
+          </>
+        ) : (
+          <>Salt okunur görünüm. Stok kayıtlarını inceleyebilirsiniz; değişiklik yetkiniz yok.</>
+        )}
       </p>
       {loadError && <p className={dStyles.banner}>{loadError}</p>}
-      {selectedCount > 0 && (
+      {canWrite && selectedCount > 0 && (
         <div className={pStyles.bulkBar} role="region" aria-label="Toplu işlemler">
           <div className={pStyles.bulkBarTop}>
             <span className={pStyles.bulkCount}>
@@ -216,38 +225,42 @@ export function StokPage() {
           <table className={dStyles.table}>
             <thead>
               <tr>
-                <th className={pStyles.checkCol} aria-label="Tümünü seç">
-                  <input
-                    type="checkbox"
-                    className={pStyles.rowCheck}
-                    checked={allSelected}
-                    ref={(el) => {
-                      if (el) el.indeterminate = someSelected;
-                    }}
-                    onChange={toggleSelectAll}
-                  />
-                </th>
+                {canWrite && (
+                  <th className={pStyles.checkCol} aria-label="Tümünü seç">
+                    <input
+                      type="checkbox"
+                      className={pStyles.rowCheck}
+                      checked={allSelected}
+                      ref={(el) => {
+                        if (el) el.indeterminate = someSelected;
+                      }}
+                      onChange={toggleSelectAll}
+                    />
+                  </th>
+                )}
                 <th>İşlem</th>
                 <th>Malzeme kodu</th>
                 <th>Ürün adı</th>
                 <th>Miktar</th>
                 <th>Birim</th>
                 <th>Makina</th>
-                <th />
+                {canWrite && <th />}
               </tr>
             </thead>
             <tbody>
               {rows.map((r) => (
                 <tr key={r.id} className={rowClass(r.processStatus ?? "bekliyor")}>
-                  <td className={pStyles.checkCol}>
-                    <input
-                      type="checkbox"
-                      className={pStyles.rowCheck}
-                      checked={selectedIds.has(r.id)}
-                      onChange={() => toggleRow(r.id)}
-                      aria-label={`Seç: ${r.sku}`}
-                    />
-                  </td>
+                  {canWrite && (
+                    <td className={pStyles.checkCol}>
+                      <input
+                        type="checkbox"
+                        className={pStyles.rowCheck}
+                        checked={selectedIds.has(r.id)}
+                        onChange={() => toggleRow(r.id)}
+                        aria-label={`Seç: ${r.sku}`}
+                      />
+                    </td>
+                  )}
                   <td>
                     <span className={badgeClass(r.processStatus ?? "bekliyor")}>
                       {statusLabel[r.processStatus ?? "bekliyor"]}
@@ -264,41 +277,43 @@ export function StokPage() {
                         ? `#${r.machineId}`
                         : "—"}
                   </td>
-                  <td className={dStyles.actions}>
-                    <button
-                      type="button"
-                      className={dStyles.linkBtn}
-                      onClick={() => {
-                        setEditing(r);
-                        setFormError(null);
-                        setModalOpen(true);
-                      }}
-                    >
-                      Ata
-                    </button>
-                    <button
-                      type="button"
-                      className={dStyles.dangerBtn}
-                      onClick={async () => {
-                        if (!confirm(`Malzeme kodu «${r.sku}» silinsin mi?`)) return;
-                        try {
-                          await api(`/api/stock/${r.id}`, { method: "DELETE" });
-                          await load();
-                        } catch (e) {
-                          alert(e instanceof Error ? e.message : "Silinemedi");
-                        }
-                      }}
-                    >
-                      Sil
-                    </button>
-                  </td>
+                  {canWrite && (
+                    <td className={dStyles.actions}>
+                      <button
+                        type="button"
+                        className={dStyles.linkBtn}
+                        onClick={() => {
+                          setEditing(r);
+                          setFormError(null);
+                          setModalOpen(true);
+                        }}
+                      >
+                        Ata
+                      </button>
+                      <button
+                        type="button"
+                        className={dStyles.dangerBtn}
+                        onClick={async () => {
+                          if (!confirm(`Malzeme kodu «${r.sku}» silinsin mi?`)) return;
+                          try {
+                            await api(`/api/stock/${r.id}`, { method: "DELETE" });
+                            await load();
+                          } catch (e) {
+                            alert(e instanceof Error ? e.message : "Silinemedi");
+                          }
+                        }}
+                      >
+                        Sil
+                      </button>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       )}
-      {modalOpen && editing && (
+      {modalOpen && editing && canWrite && (
         <StockModal
           initial={editing}
           machines={machines}

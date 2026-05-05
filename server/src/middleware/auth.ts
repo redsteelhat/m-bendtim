@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
-import { User } from "../models/User";
+import { User, type UserRole } from "../models/User";
 
 const rawSecret = process.env.JWT_SECRET;
 if (!rawSecret) {
@@ -10,7 +10,59 @@ const jwtSecret: string = rawSecret;
 
 export interface AuthPayload {
   userId: number;
-  role: string;
+  role: UserRole;
+}
+
+export type Permission =
+  | "users.manage"
+  | "machines.read"
+  | "machines.write"
+  | "stock.read"
+  | "stock.write"
+  | "malKabul.read"
+  | "malKabul.write"
+  | "shipments.read"
+  | "shipments.write"
+  | "reports.read"
+  | "audit.read"
+  | "dashboard.read";
+
+const rolePermissions: Record<UserRole, Permission[]> = {
+  admin: [
+    "users.manage",
+    "machines.read",
+    "machines.write",
+    "stock.read",
+    "stock.write",
+    "malKabul.read",
+    "malKabul.write",
+    "shipments.read",
+    "shipments.write",
+    "reports.read",
+    "audit.read",
+    "dashboard.read",
+  ],
+  operator: [
+    "machines.read",
+    "machines.write",
+    "stock.read",
+    "stock.write",
+    "malKabul.read",
+    "malKabul.write",
+    "shipments.read",
+    "shipments.write",
+    "reports.read",
+    "dashboard.read",
+  ],
+  viewer: ["machines.read", "stock.read", "malKabul.read", "shipments.read", "reports.read", "dashboard.read"],
+};
+
+function isUserRole(role: string): role is UserRole {
+  return role === "admin" || role === "operator" || role === "viewer";
+}
+
+export function roleHasPermission(role: UserRole, permission: Permission): boolean {
+  return rolePermissions[role].includes(permission);
 }
 
 /** Oturum bilgisi; Express `Request.user` (Passport) ile karışmaması için ayrı alan. */
@@ -39,7 +91,7 @@ export function requireAuth(
     const payload = decoded as jwt.JwtPayload;
     const userId = Number(payload.userId);
     const role = typeof payload.role === "string" ? payload.role : "";
-    if (!Number.isFinite(userId) || !role) {
+    if (!Number.isFinite(userId) || !isUserRole(role)) {
       res.status(401).json({ error: "Geçersiz oturum" });
       return;
     }
@@ -60,6 +112,28 @@ export function requireAdmin(
     return;
   }
   next();
+}
+
+export function requireRole(...roles: UserRole[]) {
+  return (req: AuthRequest, res: Response, next: NextFunction): void => {
+    const role = req.sessionUser?.role ?? req.auth?.role;
+    if (!role || !roles.includes(role)) {
+      res.status(403).json({ error: "Bu işlem için yetki gerekli" });
+      return;
+    }
+    next();
+  };
+}
+
+export function requirePermission(permission: Permission) {
+  return (req: AuthRequest, res: Response, next: NextFunction): void => {
+    const role = req.sessionUser?.role ?? req.auth?.role;
+    if (!role || !roleHasPermission(role, permission)) {
+      res.status(403).json({ error: "Bu işlem için yetki gerekli" });
+      return;
+    }
+    next();
+  };
 }
 
 export async function attachUser(

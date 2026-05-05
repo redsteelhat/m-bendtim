@@ -23,6 +23,15 @@ async function seed(): Promise<void> {
     throw new Error("SEED_ADMIN_EMAIL ve SEED_ADMIN_PASSWORD birlikte tanımlanmalı");
   }
 
+  if (
+    isProduction &&
+    (password === "admin123" ||
+      password.toLowerCase().startsWith("change-me") ||
+      password.length < 10)
+  ) {
+    throw new Error("Production seed şifresi güvenli olmalı");
+  }
+
   const existing = await User.findOne({ where: { email } });
   if (existing) {
     console.log("Seed: admin zaten var");

@@ -2,7 +2,7 @@ import { Router, Response } from "express";
 import { GoodsReceiptLine } from "../models/GoodsReceiptLine";
 import { sequelize } from "../db";
 import { dateOnlyLocal } from "../dateOnlyLocal";
-import { requireAuth, attachUser, AuthRequest } from "../middleware/auth";
+import { requireAuth, attachUser, AuthRequest, requirePermission } from "../middleware/auth";
 import {
   decrementStockForMalKabul,
   incrementStockForMalKabul,
@@ -49,7 +49,7 @@ const createMalKabulSchema = z
     "Ürün adı gerekli"
   );
 
-router.get("/", async (_req: AuthRequest, res: Response) => {
+router.get("/", requirePermission("malKabul.read"), async (_req: AuthRequest, res: Response) => {
   const rows = await GoodsReceiptLine.findAll({
     order: [
       ["irsaliyeTarihi", "DESC"],
@@ -60,7 +60,7 @@ router.get("/", async (_req: AuthRequest, res: Response) => {
 });
 
 /** Tek irsaliye altında birden fazla malzeme; tek işlemde atomik kayıt + stok. */
-router.post("/batch", validateBody(batchMalKabulSchema), async (req: AuthRequest, res: Response) => {
+router.post("/batch", requirePermission("malKabul.write"), validateBody(batchMalKabulSchema), async (req: AuthRequest, res: Response) => {
   const { irsaliyeNo, lines } = req.body as {
     irsaliyeNo?: string;
     lines?: Array<{
@@ -175,7 +175,7 @@ router.post("/batch", validateBody(batchMalKabulSchema), async (req: AuthRequest
   }
 });
 
-router.get("/:id", async (req, res: Response) => {
+router.get("/:id", requirePermission("malKabul.read"), async (req, res: Response) => {
   const id = Number(req.params.id);
   if (Number.isNaN(id)) {
     res.status(400).json({ error: "Geçersiz id" });
@@ -189,7 +189,7 @@ router.get("/:id", async (req, res: Response) => {
   res.json(row);
 });
 
-router.post("/", validateBody(createMalKabulSchema), async (req: AuthRequest, res: Response) => {
+router.post("/", requirePermission("malKabul.write"), validateBody(createMalKabulSchema), async (req: AuthRequest, res: Response) => {
   const { irsaliyeNo, materialCode, materialDescription, productName, quantity } =
     req.body as {
       irsaliyeNo?: string;
@@ -288,7 +288,7 @@ router.post("/", validateBody(createMalKabulSchema), async (req: AuthRequest, re
   }
 });
 
-router.delete("/:id", async (req: AuthRequest, res: Response) => {
+router.delete("/:id", requirePermission("malKabul.write"), async (req: AuthRequest, res: Response) => {
   const id = Number(req.params.id);
   if (Number.isNaN(id)) {
     res.status(400).json({ error: "Geçersiz id" });

@@ -3,7 +3,7 @@ import { StockItem } from "../models/StockItem";
 import { Machine } from "../models/Machine";
 import { sequelize } from "../db";
 import { dateOnlyLocal } from "../dateOnlyLocal";
-import { requireAuth, attachUser, AuthRequest } from "../middleware/auth";
+import { requireAuth, attachUser, AuthRequest, requirePermission } from "../middleware/auth";
 import type { StockProcessStatus } from "../models/StockItem";
 import { attachMalKabulProductNames } from "../services/stockDisplayName";
 import { recordAudit } from "../services/audit";
@@ -74,7 +74,7 @@ const stockUpdateSchema = z
   })
   .refine((body) => Object.keys(body).length > 0, "Güncellenecek alan gerekli");
 
-router.get("/", async (_req: AuthRequest, res: Response) => {
+router.get("/", requirePermission("stock.read"), async (_req: AuthRequest, res: Response) => {
   const rows = await StockItem.findAll({
     include: [includeMachine],
     order: [
@@ -88,7 +88,7 @@ router.get("/", async (_req: AuthRequest, res: Response) => {
 });
 
 /** Tamamlanan malzemeler — Sevk ekranı (otomatik kuyruk). */
-router.get("/sevk-bekleyen", async (_req: AuthRequest, res: Response) => {
+router.get("/sevk-bekleyen", requirePermission("shipments.read"), async (_req: AuthRequest, res: Response) => {
   const rows = await StockItem.findAll({
     where: { processStatus: "tamamlandi" },
     include: [includeMachine],
@@ -100,7 +100,7 @@ router.get("/sevk-bekleyen", async (_req: AuthRequest, res: Response) => {
   res.json(await attachMalKabulProductNames(rows));
 });
 
-router.get("/:id", async (req, res: Response) => {
+router.get("/:id", requirePermission("stock.read"), async (req, res: Response) => {
   const id = Number(req.params.id);
   if (Number.isNaN(id)) {
     res.status(400).json({ error: "Geçersiz id" });
@@ -115,7 +115,7 @@ router.get("/:id", async (req, res: Response) => {
   res.json(enriched);
 });
 
-router.post("/", validateBody(createStockSchema), async (req: AuthRequest, res: Response) => {
+router.post("/", requirePermission("stock.write"), validateBody(createStockSchema), async (req: AuthRequest, res: Response) => {
   const { sku, name, quantity, unit } = req.body as {
     sku?: string;
     name?: string;
@@ -185,7 +185,7 @@ router.post("/", validateBody(createStockSchema), async (req: AuthRequest, res: 
 });
 
 /** Toplu makina / durum güncellemesi (tek işlemde). */
-router.patch("/bulk", validateBody(bulkStockSchema), async (req: AuthRequest, res: Response) => {
+router.patch("/bulk", requirePermission("stock.write"), validateBody(bulkStockSchema), async (req: AuthRequest, res: Response) => {
   const { ids, machineId, processStatus } = req.body as {
     ids?: unknown;
     machineId?: number | string | null;
@@ -295,7 +295,7 @@ router.patch("/bulk", validateBody(bulkStockSchema), async (req: AuthRequest, re
 });
 
 /** Sevk ekranı: toplu sevk işareti / hedef (yalnızca tamamlanmış stok). */
-router.patch("/bulk-sevk", validateBody(bulkShipmentSchema), async (req: AuthRequest, res: Response) => {
+router.patch("/bulk-sevk", requirePermission("shipments.write"), validateBody(bulkShipmentSchema), async (req: AuthRequest, res: Response) => {
   const { ids, action, shipDestination } = req.body as {
     ids?: unknown;
     action?: string;
@@ -411,7 +411,7 @@ router.patch("/bulk-sevk", validateBody(bulkShipmentSchema), async (req: AuthReq
   }
 });
 
-router.patch("/:id", validateBody(stockUpdateSchema), async (req: AuthRequest, res: Response) => {
+router.patch("/:id", requirePermission("stock.write"), validateBody(stockUpdateSchema), async (req: AuthRequest, res: Response) => {
   const id = Number(req.params.id);
   if (Number.isNaN(id)) {
     res.status(400).json({ error: "Geçersiz id" });
@@ -580,7 +580,7 @@ router.patch("/:id", validateBody(stockUpdateSchema), async (req: AuthRequest, r
   }
 });
 
-router.delete("/:id", async (req: AuthRequest, res: Response) => {
+router.delete("/:id", requirePermission("stock.write"), async (req: AuthRequest, res: Response) => {
   const id = Number(req.params.id);
   if (Number.isNaN(id)) {
     res.status(400).json({ error: "Geçersiz id" });

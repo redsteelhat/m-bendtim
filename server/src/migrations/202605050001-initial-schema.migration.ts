@@ -5,7 +5,7 @@ export async function up({ context }: { context: QueryInterface }): Promise<void
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'enum_users_role') THEN
-    CREATE TYPE "enum_users_role" AS ENUM ('admin', 'editor');
+    CREATE TYPE "enum_users_role" AS ENUM ('admin', 'operator', 'viewer');
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'enum_stock_items_processStatus') THEN
     CREATE TYPE "enum_stock_items_processStatus" AS ENUM ('bekliyor', 'isleniyor', 'tamamlandi');
@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS "users" (
   "email" VARCHAR(255) NOT NULL UNIQUE,
   "passwordHash" VARCHAR(255) NOT NULL,
   "name" VARCHAR(120) NOT NULL,
-  "role" "enum_users_role" NOT NULL DEFAULT 'editor',
+  "role" "enum_users_role" NOT NULL DEFAULT 'operator',
   "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

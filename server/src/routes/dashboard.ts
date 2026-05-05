@@ -2,13 +2,13 @@ import { Router, Response } from "express";
 import { StockItem } from "../models/StockItem";
 import { Machine } from "../models/Machine";
 import { GoodsReceiptLine } from "../models/GoodsReceiptLine";
-import { requireAuth, AuthRequest } from "../middleware/auth";
+import { requireAuth, attachUser, requirePermission, AuthRequest } from "../middleware/auth";
 
 const router = Router();
-router.use(requireAuth);
+router.use(requireAuth, attachUser);
 
 /** Özet sayfa: stok / sevk / makina sayıları ve son mal kabuller */
-router.get("/summary", async (_req: AuthRequest, res: Response) => {
+router.get("/summary", requirePermission("dashboard.read"), async (_req: AuthRequest, res: Response) => {
   const [
     stockTotal,
     stockBekliyor,

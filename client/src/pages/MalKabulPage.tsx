@@ -1,5 +1,6 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { api } from "../api";
+import { useAuth } from "../auth/AuthContext";
 import type { MalKabulBatchResponse, MalKabulLine } from "../types";
 import { formatQtyInteger } from "../formatQty";
 import { dateOnlyLocal } from "../dateOnlyLocal";
@@ -18,6 +19,8 @@ function newLineKey(): string {
 type DraftLine = { key: string; materialCode: string; productName: string; quantity: string };
 
 export function MalKabulPage() {
+  const { hasPermission } = useAuth();
+  const canWrite = hasPermission("malKabul.write");
   const [rows, setRows] = useState<MalKabulLine[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -44,17 +47,20 @@ export function MalKabulPage() {
     <div>
       <div className={styles.head}>
         <h1 className={styles.h1}>Mal kabul</h1>
-        <button
-          type="button"
-          className={styles.primary}
-          onClick={() => {
-            setFormError(null);
-            setModalOpen(true);
-          }}
-        >
-          Stok girişi
-        </button>
+        {canWrite && (
+          <button
+            type="button"
+            className={styles.primary}
+            onClick={() => {
+              setFormError(null);
+              setModalOpen(true);
+            }}
+          >
+            Stok girişi
+          </button>
+        )}
       </div>
+      {!canWrite && <p className="muted" style={{ margin: "0 0 1rem" }}>Salt okunur görünüm.</p>}
       <p className="muted" style={{ margin: "0 0 1rem", maxWidth: "48rem" }}>
         Aynı irsaliyede birden fazla malzeme satırı girebilirsiniz; her satırda malzeme kodu,
         <strong> ürün adı</strong> ve adet girilir. <strong>İşlem tarihi</strong> kayıt anındaki gün
@@ -87,26 +93,28 @@ export function MalKabulPage() {
                   <td>{(r.materialDescription ?? "").trim() || "—"}</td>
                   <td>{formatQtyInteger(r.quantity)}</td>
                   <td className={styles.actions}>
-                    <button
-                      type="button"
-                      className={styles.dangerBtn}
-                      onClick={async () => {
-                        if (
-                          !confirm(
-                            "Bu mal kabul satırı silinecek ve stoktan miktar düşülecek. Devam?"
+                    {canWrite && (
+                      <button
+                        type="button"
+                        className={styles.dangerBtn}
+                        onClick={async () => {
+                          if (
+                            !confirm(
+                              "Bu mal kabul satırı silinecek ve stoktan miktar düşülecek. Devam?"
+                            )
                           )
-                        )
-                          return;
-                        try {
-                          await api(`/api/mal-kabul/${r.id}`, { method: "DELETE" });
-                          await load();
-                        } catch (e) {
-                          alert(e instanceof Error ? e.message : "Silinemedi");
-                        }
-                      }}
-                    >
-                      Sil
-                    </button>
+                            return;
+                          try {
+                            await api(`/api/mal-kabul/${r.id}`, { method: "DELETE" });
+                            await load();
+                          } catch (e) {
+                            alert(e instanceof Error ? e.message : "Silinemedi");
+                          }
+                        }}
+                      >
+                        Sil
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -114,7 +122,7 @@ export function MalKabulPage() {
           </table>
         </div>
       )}
-      {modalOpen && (
+      {modalOpen && canWrite && (
         <MalKabulEntryModal
           formError={formError}
           onError={setFormError}

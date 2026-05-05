@@ -1,39 +1,39 @@
-# M-BENDTIM Deploy
+# M-BENDTIM
 
-Bu proje üç servis ile canlıya alınır:
+M-BENDTIM tek firma için kullanılan kapalı bir üretim, stok, makina, sevk, raporlama ve kullanıcı yönetim panelidir.
+
+Hedef canlı mimari:
 
 - Frontend: Vercel (`client`)
 - Backend: Render (`server`)
-- Veritabanı: Supabase Postgres
-
-İstek akışı:
+- Veritabanı: Supabase PostgreSQL
 
 ```text
-Tarayıcı -> Vercel frontend -> Render backend API -> Supabase Postgres
+Tarayıcı -> Vercel frontend -> Render backend API -> Supabase PostgreSQL
 ```
 
 Frontend Supabase'e doğrudan bağlanmaz. Supabase yalnızca PostgreSQL veritabanı olarak kullanılır.
 
-## 1. Supabase
+## Supabase
 
-Supabase projesinde PostgreSQL bağlantı bilgisini al.
+Supabase Dashboard üzerinden PostgreSQL connection string al.
 
 Önerilen bağlantı:
 
-- Transaction pooler
+- Transaction Pooler
 - Port: `6543`
+- Kullanıcı adı genelde `postgres.PROJECT_REF`
 - `sslmode=require`
-- Kullanıcı adı genelde `postgres.PROJECT_REF` formatındadır
 
-Örnek `DATABASE_URL`:
+Örnek:
 
 ```env
-DATABASE_URL=postgresql://postgres.PROJECT_REF:ENCODED_PASSWORD@aws-0-eu-central-1.pooler.supabase.com:6543/postgres?sslmode=require
+DATABASE_URL=postgres://postgres.PROJECT_REF:ENCODED_PASSWORD@aws-0-eu-central-1.pooler.supabase.com:6543/postgres?sslmode=require
+DB_SSL=true
+DB_SSL_REJECT_UNAUTHORIZED=false
 ```
 
-Bu değer Supabase project API URL'i değildir. Render backend'in PostgreSQL'e bağlanması için Supabase Dashboard'daki database connection string kullanılmalıdır.
-
-Parolada `#`, `+`, `!`, `@`, `:` gibi özel karakterler varsa URL encode edilmelidir:
+Paroladaki özel karakterleri URL encode et:
 
 ```text
 # -> %23
@@ -43,81 +43,77 @@ Parolada `#`, `+`, `!`, `@`, `:` gibi özel karakterler varsa URL encode edilmel
 : -> %3A
 ```
 
-Yanlış parola, yanlış proje referansı veya encode edilmemiş parola genelde şu hatayı üretir:
+`DATABASE_URL` Supabase project API URL'i olmamalıdır. Şu yanlıştır:
 
-```text
-password authentication failed for user "postgres"
+```env
+DATABASE_URL=https://your-project.supabase.co
 ```
 
-## 2. Render Backend
+## Render Backend
 
-Render'da backend için `server` klasörünü deploy et.
+Render servis tipi: Web Service
 
-Render ayarları:
+Önerilen native Node deploy ayarları:
 
 ```text
 Root Directory: server
-Build Command: npm ci && npm run build
+Build Command: npm install && npm run build
+Pre-deploy Command: npm run migrate:prod -- up
 Start Command: npm start
 ```
 
-Docker deploy kullanıyorsan `server/Dockerfile` migration'ı API başlamadan önce otomatik çalıştırır:
-
-```text
-node dist/migrate.js up && node dist/index.js
-```
-
-İlk deploy öncesi veya şema değişikliklerinden sonra migration çalıştır:
-
-```bash
-npm run build
-npm run migrate:prod -- up
-```
-
-Render'da Docker dışı deploy kullanıyorsan bunu manuel shell/job olarak çalıştırabilir veya deploy sürecine ayrı bir migration adımı olarak ekleyebilirsin. API start komutu seed çalıştırmaz.
-
-Backend environment variables:
+Render environment variables:
 
 ```env
-DATABASE_URL=postgresql://postgres.PROJECT_REF:ENCODED_PASSWORD@aws-0-eu-central-1.pooler.supabase.com:6543/postgres?sslmode=require
+NODE_ENV=production
+PORT=10000
+DATABASE_URL=postgres://postgres.PROJECT_REF:ENCODED_PASSWORD@aws-0-eu-central-1.pooler.supabase.com:6543/postgres?sslmode=require
 DB_SSL=true
 DB_SSL_REJECT_UNAUTHORIZED=false
-JWT_SECRET=change-this-to-a-long-random-secret
-NODE_ENV=production
-PORT=4000
-CORS_ORIGIN=https://your-vercel-app.vercel.app
-SEED_ADMIN_EMAIL=admin@example.com
-SEED_ADMIN_PASSWORD=change-me-now
+JWT_SECRET=change-this-to-a-real-32-plus-character-random-secret
+CORS_ORIGIN=https://your-vercel-domain.vercel.app
+SEED_ADMIN_EMAIL=admin@company.com
+SEED_ADMIN_PASSWORD=change-this-secure-admin-password
 SEED_ADMIN_NAME=Yonetici
 ```
 
-Supabase pooler kullanırken Render ortamında `DB_SSL_REJECT_UNAUTHORIZED=false` bırakılmalıdır. Uygulama `sslmode=require` değerini bağlantı stringinden okuyup SSL'i Sequelize ayarlarıyla yönetir; bu, Render'da `SELF_SIGNED_CERT_IN_CHAIN` hatasını engeller.
+Production güvenlik kontrolleri backend açılışında çalışır. Aşağıdaki durumlarda backend bilinçli olarak başlamaz:
 
-Health check:
+- `DATABASE_URL` eksik veya PostgreSQL URL'i değilse
+- `DATABASE_URL` Supabase project API URL'i ise
+- `JWT_SECRET` eksik, placeholder veya 32 karakterden kısa ise
+- `CORS_ORIGIN=*` ise
+- `DB_SSL=true` değilse
+- `SEED_ADMIN_PASSWORD` `admin123` veya placeholder ise
+
+Health endpoint:
 
 ```text
-GET https://your-render-service.onrender.com/api/health
+GET https://your-render-backend-url/api/health
 ```
 
-Başarılı cevap:
+Beklenen cevap:
 
 ```json
 { "ok": true }
 ```
 
-Readiness check:
+Readiness endpoint:
 
 ```text
-GET https://your-render-service.onrender.com/api/ready
+GET https://your-render-backend-url/api/ready
 ```
 
-`/api/ready`, veritabanı bağlantısını ve bekleyen migration durumunu kontrol eder. Bekleyen migration varsa `503` döner. Production ortamında backend, bekleyen migration varken başlamaz.
+`/api/ready` veritabanı bağlantısını ve bekleyen migration durumunu kontrol eder:
 
-## 3. Vercel Frontend
+- Hazırsa `200`
+- DB bağlantısı yoksa veya bekleyen migration varsa `503`
 
-Vercel'de frontend için `client` klasörünü deploy et.
+Production'da schema değişiklikleri sadece migration ile yapılır. `syncModels()` production ortamında çalışmaz.
 
-Vercel ayarları:
+## Vercel Frontend
+
+Vercel proje ayarları:
 
 ```text
 Root Directory: client
@@ -125,28 +121,38 @@ Build Command: npm run build
 Output Directory: dist
 ```
 
-Frontend environment variable:
+Vercel environment variable:
 
 ```env
-VITE_API_BASE_URL=https://your-render-service.onrender.com
+VITE_API_BASE_URL=https://your-render-backend-url
 ```
 
-`VITE_API_BASE_URL` Supabase URL'i olmamalıdır. Bu değer Render'daki backend API adresi olmalıdır.
+`VITE_API_BASE_URL` Render backend adresi olmalıdır. Supabase URL'i girilmemelidir.
 
 SPA route desteği için `client/vercel.json` dosyası vardır.
 
-## 4. Deploy Kontrol Listesi
+## İlk Admin Kullanıcısı
 
-- Supabase `DATABASE_URL` doğru ve parola URL encode edilmiş mi?
-- Render backend `/api/health` endpoint'i 200 dönüyor mu?
-- Render backend `/api/ready` endpoint'i 200 dönüyor mu?
-- Render `CORS_ORIGIN` içinde Vercel domaini var mı?
-- Vercel `VITE_API_BASE_URL` Render backend adresini gösteriyor mu?
-- Login isteği `/api/auth/login` üzerinden Render backend'e gidiyor mu?
-- Admin seed bilgileri production için güvenli değerlerle değiştirildi mi?
-- `JWT_SECRET` uzun ve tahmin edilemez bir değer mi?
+Seed komutu otomatik start sırasında çalışmaz.
 
-## 5. Yerel Geliştirme
+Gerekirse Render shell/job üzerinden:
+
+```bash
+cd server
+npm run seed
+```
+
+Production'da seed env değerleri güvenli olmalıdır.
+
+## Roller
+
+Kullanıcılar sadece yöneticiler tarafından oluşturulur. Public signup yoktur.
+
+- `admin`: tam erişim, kullanıcı yönetimi dahil tüm modüller.
+- `operator`: mal kabul, stok, makina atama/durum, sevk ve rapor işlemleri; kullanıcı yönetimi yok.
+- `viewer`: salt okunur erişim; dashboard, stok, makina, mal kabul, sevk ve raporları görebilir, veri değiştiremez.
+
+## Yerel Geliştirme
 
 Backend:
 
@@ -170,27 +176,9 @@ Yerel frontend env:
 VITE_API_BASE_URL=http://localhost:4000
 ```
 
-Yerel backend env için `server/.env.example` dosyasını referans al.
+## Migration Komutları
 
-## 6. Build Doğrulama
-
-Frontend:
-
-```bash
-cd client
-npm run build
-```
-
-Backend:
-
-```bash
-cd server
-npm run build
-```
-
-## 7. Migration Komutları
-
-Yerel ortamda:
+Yerel:
 
 ```bash
 cd server
@@ -208,4 +196,29 @@ npm run migrate:prod -- pending
 npm run migrate:prod -- up
 ```
 
-Migration'lar `server/src/migrations` altında tutulur. Production ortamında tablo oluşturma ve şema değişiklikleri app start sırasında değil, bu komutlarla yapılır.
+## Build Doğrulama
+
+Frontend:
+
+```bash
+cd client
+npm run build
+```
+
+Backend:
+
+```bash
+cd server
+npm run build
+```
+
+## Deploy Kontrol Listesi
+
+- Supabase `DATABASE_URL` PostgreSQL connection string mi?
+- DB parolası URL encode edildi mi?
+- Render `Pre-deploy Command` migration çalıştırıyor mu?
+- Render `/api/health` 200 dönüyor mu?
+- Render `/api/ready` 200 dönüyor mu?
+- Vercel `VITE_API_BASE_URL` Render backend URL'ini gösteriyor mu?
+- Render `CORS_ORIGIN` Vercel domaini ile aynı mı?
+- Production secret değerleri placeholder değil mi?

@@ -1,6 +1,6 @@
 import { Router, Response } from "express";
 import { Shipment } from "../models/Shipment";
-import { requireAuth, attachUser, AuthRequest } from "../middleware/auth";
+import { requireAuth, attachUser, AuthRequest, requirePermission } from "../middleware/auth";
 import {
   nullableTrimmedString,
   optionalTrimmedString,
@@ -35,12 +35,12 @@ const updateShipmentSchema = z
   })
   .refine((body) => Object.keys(body).length > 0, "Güncellenecek alan gerekli");
 
-router.get("/", async (_req: AuthRequest, res: Response) => {
+router.get("/", requirePermission("shipments.read"), async (_req: AuthRequest, res: Response) => {
   const rows = await Shipment.findAll({ order: [["shippedAt", "DESC"], ["id", "DESC"]] });
   res.json(rows);
 });
 
-router.get("/:id", async (req, res: Response) => {
+router.get("/:id", requirePermission("shipments.read"), async (req, res: Response) => {
   const id = Number(req.params.id);
   if (Number.isNaN(id)) {
     res.status(400).json({ error: "Geçersiz id" });
@@ -54,7 +54,7 @@ router.get("/:id", async (req, res: Response) => {
   res.json(row);
 });
 
-router.post("/", validateBody(createShipmentSchema), async (req, res: Response) => {
+router.post("/", requirePermission("shipments.write"), validateBody(createShipmentSchema), async (req, res: Response) => {
   const { documentNo, shippedAt, destination, notes, status } = req.body as {
     documentNo?: string;
     shippedAt?: string;
@@ -82,7 +82,7 @@ router.post("/", validateBody(createShipmentSchema), async (req, res: Response) 
   }
 });
 
-router.patch("/:id", validateBody(updateShipmentSchema), async (req, res: Response) => {
+router.patch("/:id", requirePermission("shipments.write"), validateBody(updateShipmentSchema), async (req, res: Response) => {
   const id = Number(req.params.id);
   if (Number.isNaN(id)) {
     res.status(400).json({ error: "Geçersiz id" });
@@ -116,7 +116,7 @@ router.patch("/:id", validateBody(updateShipmentSchema), async (req, res: Respon
   }
 });
 
-router.delete("/:id", async (req, res: Response) => {
+router.delete("/:id", requirePermission("shipments.write"), async (req, res: Response) => {
   const id = Number(req.params.id);
   if (Number.isNaN(id)) {
     res.status(400).json({ error: "Geçersiz id" });

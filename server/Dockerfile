@@ -13,4 +13,4 @@ COPY package*.json ./
 RUN npm ci --omit=dev
 COPY --from=builder /app/dist ./dist
 EXPOSE 4000
-CMD ["sh", "-c", "node dist/migrate.js up && exec node dist/index.js"]
+CMD ["npm", "start"]

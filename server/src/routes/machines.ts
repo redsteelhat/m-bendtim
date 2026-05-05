@@ -1,6 +1,6 @@
 import { Router, Response } from "express";
 import { Machine } from "../models/Machine";
-import { requireAuth, attachUser, AuthRequest } from "../middleware/auth";
+import { requireAuth, attachUser, AuthRequest, requirePermission } from "../middleware/auth";
 import {
   aggregateStockByMachine,
   serializeMachineWithStock,
@@ -22,7 +22,7 @@ const updateMachineSchema = z
   })
   .refine((body) => Object.keys(body).length > 0, "Güncellenecek alan gerekli");
 
-router.get("/", async (_req: AuthRequest, res: Response) => {
+router.get("/", requirePermission("machines.read"), async (_req: AuthRequest, res: Response) => {
   const rows = await Machine.findAll({
     order: [["id", "ASC"]],
   });
@@ -31,7 +31,7 @@ router.get("/", async (_req: AuthRequest, res: Response) => {
   res.json(rows.map((m) => serializeMachineWithStock(m, agg.get(m.id))));
 });
 
-router.get("/:id", async (req, res: Response) => {
+router.get("/:id", requirePermission("machines.read"), async (req, res: Response) => {
   const id = Number(req.params.id);
   if (Number.isNaN(id)) {
     res.status(400).json({ error: "Geçersiz id" });
@@ -46,7 +46,7 @@ router.get("/:id", async (req, res: Response) => {
   res.json(serializeMachineWithStock(row, agg.get(row.id)));
 });
 
-router.post("/", validateBody(createMachineSchema), async (req, res: Response) => {
+router.post("/", requirePermission("machines.write"), validateBody(createMachineSchema), async (req, res: Response) => {
   const { code, name } = req.body as {
     code?: string;
     name?: string;
@@ -67,7 +67,7 @@ router.post("/", validateBody(createMachineSchema), async (req, res: Response) =
   }
 });
 
-router.patch("/:id", validateBody(updateMachineSchema), async (req, res: Response) => {
+router.patch("/:id", requirePermission("machines.write"), validateBody(updateMachineSchema), async (req, res: Response) => {
   const id = Number(req.params.id);
   if (Number.isNaN(id)) {
     res.status(400).json({ error: "Geçersiz id" });
@@ -98,7 +98,7 @@ router.patch("/:id", validateBody(updateMachineSchema), async (req, res: Respons
   }
 });
 
-router.delete("/:id", async (req, res: Response) => {
+router.delete("/:id", requirePermission("machines.write"), async (req, res: Response) => {
   const id = Number(req.params.id);
   if (Number.isNaN(id)) {
     res.status(400).json({ error: "Geçersiz id" });

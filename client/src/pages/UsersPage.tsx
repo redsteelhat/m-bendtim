@@ -32,7 +32,7 @@ export function UsersPage() {
     if (me?.role === "admin") void load();
   }, [me?.role, load]);
 
-  if (me?.role !== "admin") return <Navigate to="/" replace />;
+  if (me?.role !== "admin") return <Navigate to="/dashboard" replace />;
 
   return (
     <div>
@@ -150,7 +150,7 @@ function UserFormModal({
   const [name, setName] = useState(initial?.name ?? "");
   const [email, setEmail] = useState(initial?.email ?? "");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState<UserRole>(initial?.role ?? "editor");
+  const [role, setRole] = useState<UserRole>(initial?.role ?? "operator");
   const [busy, setBusy] = useState(false);
 
   async function onSubmit(e: FormEvent) {
@@ -233,8 +233,9 @@ function UserFormModal({
               value={role}
               onChange={(e) => setRole(e.target.value as UserRole)}
             >
-              <option value="editor">Editör</option>
               <option value="admin">Yönetici</option>
+              <option value="operator">Operatör</option>
+              <option value="viewer">Görüntüleyici</option>
             </select>
           </label>
           {formError && <p className={styles.formErr}>{formError}</p>}

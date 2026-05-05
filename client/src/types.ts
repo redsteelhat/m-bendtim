@@ -1,4 +1,10 @@
-export type UserRole = "admin" | "editor";
+export type UserRole = "admin" | "operator" | "viewer";
+export type Permission =
+  | "users.manage"
+  | "machines.write"
+  | "stock.write"
+  | "malKabul.write"
+  | "shipments.write";
 
 export interface User {
   id: number;

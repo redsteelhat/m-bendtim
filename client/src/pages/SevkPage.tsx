@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../api";
+import { useAuth } from "../auth/AuthContext";
 import type { StockItem } from "../types";
 import { formatQtyInteger } from "../formatQty";
 import styles from "./dataPage.module.css";
@@ -11,6 +12,8 @@ function toInputDate(iso: string | null | undefined): string {
 }
 
 export function SevkPage() {
+  const { hasPermission } = useAuth();
+  const canWrite = hasPermission("shipments.write");
   const [rows, setRows] = useState<StockItem[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -204,14 +207,20 @@ export function SevkPage() {
         <h1 className={styles.h1}>Sevk</h1>
       </div>
       <p className="muted" style={{ margin: "0 0 1rem", maxWidth: "48rem" }}>
-        Stoklar sayfasında işlem durumu «Tamamlandı» olan malzemeler burada listelenir. Satırları
-        işaretleyerek <strong>toplu sevk</strong> (nereye ile birlikte), <strong>toplu sevk iptali</strong>{" "}
-        veya yalnızca sevk edilmişler için <strong>toplu hedef (nereye)</strong> güncellemesi
-        yapabilirsiniz. <strong>Sevk tarihi</strong> işlem anındaki gün olarak sunucuda otomatik
-        atanır. Tek satırda yine aşağıdaki düğmeleri kullanabilirsiniz.
+        {canWrite ? (
+          <>
+            Stoklar sayfasında işlem durumu «Tamamlandı» olan malzemeler burada listelenir. Satırları
+            işaretleyerek <strong>toplu sevk</strong> (nereye ile birlikte), <strong>toplu sevk iptali</strong>{" "}
+            veya yalnızca sevk edilmişler için <strong>toplu hedef (nereye)</strong> güncellemesi
+            yapabilirsiniz. <strong>Sevk tarihi</strong> işlem anındaki gün olarak sunucuda otomatik
+            atanır. Tek satırda yine aşağıdaki düğmeleri kullanabilirsiniz.
+          </>
+        ) : (
+          <>Salt okunur görünüm. Sevk kayıtlarını inceleyebilirsiniz; değişiklik yetkiniz yok.</>
+        )}
       </p>
       {loadError && <p className={styles.banner}>{loadError}</p>}
-      {selectedCount > 0 && (
+      {canWrite && selectedCount > 0 && (
         <div className={sevkStyles.bulkBar} role="region" aria-label="Toplu sevk işlemleri">
           <div className={sevkStyles.bulkBarTop}>
             <span className={sevkStyles.bulkCount}>{selectedCount} satır seçili</span>
@@ -299,17 +308,19 @@ export function SevkPage() {
           <table className={styles.table}>
             <thead>
               <tr>
-                <th className={sevkStyles.checkCol} aria-label="Tümünü seç">
-                  <input
-                    type="checkbox"
-                    className={sevkStyles.rowCheck}
-                    checked={allSelected}
-                    ref={(el) => {
-                      if (el) el.indeterminate = someSelected;
-                    }}
-                    onChange={toggleSelectAll}
-                  />
-                </th>
+                {canWrite && (
+                  <th className={sevkStyles.checkCol} aria-label="Tümünü seç">
+                    <input
+                      type="checkbox"
+                      className={sevkStyles.rowCheck}
+                      checked={allSelected}
+                      ref={(el) => {
+                        if (el) el.indeterminate = someSelected;
+                      }}
+                      onChange={toggleSelectAll}
+                    />
+                  </th>
+                )}
                 <th>Sevk</th>
                 <th>Malzeme kodu</th>
                 <th>Ürün adı</th>
@@ -317,7 +328,7 @@ export function SevkPage() {
                 <th>Makina</th>
                 <th>Nereye</th>
                 <th>Sevk tarihi</th>
-                <th />
+                {canWrite && <th />}
               </tr>
             </thead>
             <tbody>
@@ -328,15 +339,17 @@ export function SevkPage() {
                     key={r.id}
                     className={shipped ? sevkStyles.rowSevkli : sevkStyles.rowBekliyor}
                   >
-                    <td className={sevkStyles.checkCol}>
-                      <input
-                        type="checkbox"
-                        className={sevkStyles.rowCheck}
-                        checked={selectedIds.has(r.id)}
-                        onChange={() => toggleRow(r.id)}
-                        aria-label={`Seç: ${r.sku}`}
-                      />
-                    </td>
+                    {canWrite && (
+                      <td className={sevkStyles.checkCol}>
+                        <input
+                          type="checkbox"
+                          className={sevkStyles.rowCheck}
+                          checked={selectedIds.has(r.id)}
+                          onChange={() => toggleRow(r.id)}
+                          aria-label={`Seç: ${r.sku}`}
+                        />
+                      </td>
+                    )}
                     <td>
                       {shipped ? (
                         <span className={sevkStyles.badgeSevkli}>Sevk edildi</span>
@@ -351,7 +364,7 @@ export function SevkPage() {
                       {r.machine ? `${r.machine.code} — ${r.machine.name}` : "—"}
                     </td>
                     <td>
-                      {shipped ? (
+                      {shipped || !canWrite ? (
                         <span>{r.shipDestination?.trim() || "—"}</span>
                       ) : (
                         <input
@@ -369,27 +382,29 @@ export function SevkPage() {
                       )}
                     </td>
                     <td>{shipped ? toInputDate(r.shippedAt) : "—"}</td>
-                    <td className={styles.actions}>
-                      {shipped ? (
-                        <button
-                          type="button"
-                          className={styles.linkBtn}
-                          disabled={busyId === r.id}
-                          onClick={() => void setShipped(r, false)}
-                        >
-                          Sevk işaretini kaldır
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          className={styles.primary}
-                          disabled={busyId === r.id}
-                          onClick={() => void setShipped(r, true)}
-                        >
-                          Sevk edildi
-                        </button>
-                      )}
-                    </td>
+                    {canWrite && (
+                      <td className={styles.actions}>
+                        {shipped ? (
+                          <button
+                            type="button"
+                            className={styles.linkBtn}
+                            disabled={busyId === r.id}
+                            onClick={() => void setShipped(r, false)}
+                          >
+                            Sevk işaretini kaldır
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            className={styles.primary}
+                            disabled={busyId === r.id}
+                            onClick={() => void setShipped(r, true)}
+                          >
+                            Sevk edildi
+                          </button>
+                        )}
+                      </td>
+                    )}
                   </tr>
                 );
               })}

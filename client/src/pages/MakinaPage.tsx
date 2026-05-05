@@ -1,5 +1,6 @@
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { api } from "../api";
+import { useAuth } from "../auth/AuthContext";
 import type { Machine } from "../types";
 import styles from "./dataPage.module.css";
 import mStyles from "./MakinaPage.module.css";
@@ -37,6 +38,8 @@ function durumCell(m: Machine) {
 }
 
 export function MakinaPage() {
+  const { hasPermission } = useAuth();
+  const canWrite = hasPermission("machines.write");
   const [rows, setRows] = useState<Machine[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -64,18 +67,21 @@ export function MakinaPage() {
     <div>
       <div className={styles.head}>
         <h1 className={styles.h1}>Makina</h1>
-        <button
-          type="button"
-          className={styles.primary}
-          onClick={() => {
-            setEditing(null);
-            setFormError(null);
-            setModal("create");
-          }}
-        >
-          Yeni makina
-        </button>
+        {canWrite && (
+          <button
+            type="button"
+            className={styles.primary}
+            onClick={() => {
+              setEditing(null);
+              setFormError(null);
+              setModal("create");
+            }}
+          >
+            Yeni makina
+          </button>
+        )}
       </div>
+      {!canWrite && <p className="muted" style={{ margin: "0 0 1rem" }}>Salt okunur görünüm.</p>}
       {loadError && <p className={styles.banner}>{loadError}</p>}
       {loading ? (
         <p className="muted">Yükleniyor…</p>
@@ -87,7 +93,7 @@ export function MakinaPage() {
                 <th>Makina kodu</th>
                 <th>Makina seri no</th>
                 <th>Atanan stok</th>
-                <th />
+                {canWrite && <th />}
               </tr>
             </thead>
             <tbody>
@@ -96,41 +102,43 @@ export function MakinaPage() {
                   <td>{r.code}</td>
                   <td>{r.name}</td>
                   <td>{durumCell(r)}</td>
-                  <td className={styles.actions}>
-                    <button
-                      type="button"
-                      className={styles.linkBtn}
-                      onClick={() => {
-                        setEditing(r);
-                        setFormError(null);
-                        setModal("edit");
-                      }}
-                    >
-                      Düzenle
-                    </button>
-                    <button
-                      type="button"
-                      className={styles.dangerBtn}
-                      onClick={async () => {
-                        if (!confirm(`Seri no «${r.name}» silinsin mi?`)) return;
-                        try {
-                          await api(`/api/machines/${r.id}`, { method: "DELETE" });
-                          await load();
-                        } catch (e) {
-                          alert(e instanceof Error ? e.message : "Silinemedi");
-                        }
-                      }}
-                    >
-                      Sil
-                    </button>
-                  </td>
+                  {canWrite && (
+                    <td className={styles.actions}>
+                      <button
+                        type="button"
+                        className={styles.linkBtn}
+                        onClick={() => {
+                          setEditing(r);
+                          setFormError(null);
+                          setModal("edit");
+                        }}
+                      >
+                        Düzenle
+                      </button>
+                      <button
+                        type="button"
+                        className={styles.dangerBtn}
+                        onClick={async () => {
+                          if (!confirm(`Seri no «${r.name}» silinsin mi?`)) return;
+                          try {
+                            await api(`/api/machines/${r.id}`, { method: "DELETE" });
+                            await load();
+                          } catch (e) {
+                            alert(e instanceof Error ? e.message : "Silinemedi");
+                          }
+                        }}
+                      >
+                        Sil
+                      </button>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       )}
-      {modal && (
+      {modal && canWrite && (
         <MachineModal
           mode={modal}
           initial={editing}

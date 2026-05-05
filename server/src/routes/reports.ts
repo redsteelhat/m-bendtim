@@ -2,7 +2,7 @@ import { Router, Response } from "express";
 import { GoodsReceiptLine } from "../models/GoodsReceiptLine";
 import { StockItem } from "../models/StockItem";
 import { Machine } from "../models/Machine";
-import { requireAuth, attachUser, AuthRequest } from "../middleware/auth";
+import { requireAuth, attachUser, AuthRequest, requirePermission } from "../middleware/auth";
 
 type StockWithMachine = InstanceType<typeof StockItem> & {
   machine?: Machine | null;
@@ -24,7 +24,7 @@ function dateOnlyToStr(v: unknown): string {
   return String(v).slice(0, 10);
 }
 
-router.get("/range", async (_req: AuthRequest, res: Response) => {
+router.get("/range", requirePermission("reports.read"), async (_req: AuthRequest, res: Response) => {
   const malKabulRows = await GoodsReceiptLine.findAll({
     order: [
       ["irsaliyeTarihi", "DESC"],
