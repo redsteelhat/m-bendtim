@@ -7,9 +7,47 @@ import {
   decrementStockForMalKabul,
   incrementStockForMalKabul,
 } from "../services/malKabulStock";
+import { recordAudit } from "../services/audit";
+import {
+  optionalTrimmedString,
+  positiveQuantity,
+  trimmedString,
+  validateBody,
+  z,
+} from "../middleware/validate";
 
 const router = Router();
 router.use(requireAuth, attachUser);
+
+const malKabulLineSchema = z
+  .object({
+    materialCode: trimmedString("Malzeme kodu", 80),
+    productName: optionalTrimmedString("Ürün adı", 200),
+    materialDescription: optionalTrimmedString("Ürün adı", 240),
+    quantity: positiveQuantity,
+  })
+  .refine(
+    (line) => Boolean(line.productName || line.materialDescription),
+    "Ürün adı gerekli"
+  );
+
+const batchMalKabulSchema = z.object({
+  irsaliyeNo: trimmedString("İrsaliye no", 64),
+  lines: z.array(malKabulLineSchema).min(1, "En az bir malzeme satırı gerekli"),
+});
+
+const createMalKabulSchema = z
+  .object({
+    irsaliyeNo: trimmedString("İrsaliye no", 64),
+    materialCode: trimmedString("Malzeme kodu", 80),
+    materialDescription: optionalTrimmedString("Ürün adı", 240),
+    productName: optionalTrimmedString("Ürün adı", 200),
+    quantity: positiveQuantity,
+  })
+  .refine(
+    (body) => Boolean(body.productName || body.materialDescription),
+    "Ürün adı gerekli"
+  );
 
 router.get("/", async (_req: AuthRequest, res: Response) => {
   const rows = await GoodsReceiptLine.findAll({
@@ -22,7 +60,7 @@ router.get("/", async (_req: AuthRequest, res: Response) => {
 });
 
 /** Tek irsaliye altında birden fazla malzeme; tek işlemde atomik kayıt + stok. */
-router.post("/batch", async (req, res: Response) => {
+router.post("/batch", validateBody(batchMalKabulSchema), async (req: AuthRequest, res: Response) => {
   const { irsaliyeNo, lines } = req.body as {
     irsaliyeNo?: string;
     lines?: Array<{
@@ -101,6 +139,22 @@ router.post("/batch", async (req, res: Response) => {
             name: n.stockName,
             qty: n.adet,
             machineId: null,
+            actorUserId: req.sessionUser?.id,
+            referenceId: line.id,
+          },
+          transaction
+        );
+        await recordAudit(
+          {
+            actorUserId: req.sessionUser?.id,
+            action: "mal_kabul.create",
+            entityType: "goods_receipt_line",
+            entityId: line.id,
+            metadata: {
+              irsaliyeNo: irsaliyeNo.trim(),
+              materialCode: n.code,
+              quantity: n.adet,
+            },
           },
           transaction
         );
@@ -135,7 +189,7 @@ router.get("/:id", async (req, res: Response) => {
   res.json(row);
 });
 
-router.post("/", async (req, res: Response) => {
+router.post("/", validateBody(createMalKabulSchema), async (req: AuthRequest, res: Response) => {
   const { irsaliyeNo, materialCode, materialDescription, productName, quantity } =
     req.body as {
       irsaliyeNo?: string;
@@ -200,6 +254,22 @@ router.post("/", async (req, res: Response) => {
           name: stockName,
           qty: adet,
           machineId: null,
+          actorUserId: req.sessionUser?.id,
+          referenceId: line.id,
+        },
+        transaction
+      );
+      await recordAudit(
+        {
+          actorUserId: req.sessionUser?.id,
+          action: "mal_kabul.create",
+          entityType: "goods_receipt_line",
+          entityId: line.id,
+          metadata: {
+            irsaliyeNo: irsaliyeNo.trim(),
+            materialCode: code,
+            quantity: adet,
+          },
         },
         transaction
       );
@@ -218,7 +288,7 @@ router.post("/", async (req, res: Response) => {
   }
 });
 
-router.delete("/:id", async (req, res: Response) => {
+router.delete("/:id", async (req: AuthRequest, res: Response) => {
   const id = Number(req.params.id);
   if (Number.isNaN(id)) {
     res.status(400).json({ error: "Geçersiz id" });
@@ -238,6 +308,21 @@ router.delete("/:id", async (req, res: Response) => {
         line.materialCode,
         null,
         Number(line.quantity),
+        transaction,
+        { actorUserId: req.sessionUser?.id, referenceId: line.id }
+      );
+      await recordAudit(
+        {
+          actorUserId: req.sessionUser?.id,
+          action: "mal_kabul.delete",
+          entityType: "goods_receipt_line",
+          entityId: line.id,
+          metadata: {
+            irsaliyeNo: line.irsaliyeNo,
+            materialCode: line.materialCode,
+            quantity: Number(line.quantity),
+          },
+        },
         transaction
       );
       await line.destroy({ transaction });

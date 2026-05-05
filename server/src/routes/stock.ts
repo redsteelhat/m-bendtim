@@ -6,6 +6,18 @@ import { dateOnlyLocal } from "../dateOnlyLocal";
 import { requireAuth, attachUser, AuthRequest } from "../middleware/auth";
 import type { StockProcessStatus } from "../models/StockItem";
 import { attachMalKabulProductNames } from "../services/stockDisplayName";
+import { recordAudit } from "../services/audit";
+import { recordStockMovement, snapshotStock } from "../services/stockMovement";
+import {
+  idList,
+  nonNegativeQuantity,
+  nullableTrimmedString,
+  optionalId,
+  optionalTrimmedString,
+  trimmedString,
+  validateBody,
+  z,
+} from "../middleware/validate";
 
 const router = Router();
 router.use(requireAuth, attachUser);
@@ -17,6 +29,50 @@ const includeMachine = {
 };
 
 const processValues: StockProcessStatus[] = ["bekliyor", "isleniyor", "tamamlandi"];
+const processStatusSchema = z.enum(processValues);
+
+const createStockSchema = z.object({
+  sku: trimmedString("Malzeme kodu", 80),
+  name: trimmedString("Ürün adı", 200),
+  quantity: nonNegativeQuantity.optional(),
+  unit: optionalTrimmedString("Birim", 24),
+});
+
+const bulkStockSchema = z
+  .object({
+    ids: idList,
+    machineId: optionalId,
+    processStatus: processStatusSchema.optional(),
+  })
+  .refine(
+    (body) => body.machineId !== undefined || body.processStatus !== undefined,
+    "Makina veya durum belirtilmeli"
+  );
+
+const bulkShipmentSchema = z.object({
+  ids: idList,
+  action: z.enum(["ship", "unship", "destination"]),
+  shipDestination: nullableTrimmedString("Sevk hedefi", 200),
+});
+
+const stockUpdateSchema = z
+  .object({
+    sku: optionalTrimmedString("Malzeme kodu", 80),
+    name: optionalTrimmedString("Ürün adı", 200),
+    quantity: nonNegativeQuantity.optional(),
+    unit: optionalTrimmedString("Birim", 24),
+    machineId: optionalId,
+    newMachine: z
+      .object({
+        code: optionalTrimmedString("Yeni makina kodu", 64),
+        name: optionalTrimmedString("Yeni makina adı", 200),
+      })
+      .optional(),
+    processStatus: processStatusSchema.optional(),
+    isShipped: z.boolean().optional(),
+    shipDestination: nullableTrimmedString("Sevk hedefi", 200),
+  })
+  .refine((body) => Object.keys(body).length > 0, "Güncellenecek alan gerekli");
 
 router.get("/", async (_req: AuthRequest, res: Response) => {
   const rows = await StockItem.findAll({
@@ -59,7 +115,7 @@ router.get("/:id", async (req, res: Response) => {
   res.json(enriched);
 });
 
-router.post("/", async (req, res: Response) => {
+router.post("/", validateBody(createStockSchema), async (req: AuthRequest, res: Response) => {
   const { sku, name, quantity, unit } = req.body as {
     sku?: string;
     name?: string;
@@ -77,16 +133,43 @@ router.post("/", async (req, res: Response) => {
   }
   const qty = Math.max(0, Math.round(qtyRaw));
   try {
-    const row = await StockItem.create({
-      sku: sku.trim(),
-      name: name.trim(),
-      quantity: qty,
-      unit: (unit?.trim() || "adet").slice(0, 24),
-      machineId: null,
-      processStatus: "bekliyor",
-      isShipped: false,
-      shippedAt: null,
-      shipDestination: null,
+    const row = await sequelize.transaction(async (transaction) => {
+      const createdRow = await StockItem.create(
+        {
+          sku: sku.trim(),
+          name: name.trim(),
+          quantity: qty,
+          unit: (unit?.trim() || "adet").slice(0, 24),
+          machineId: null,
+          processStatus: "bekliyor",
+          isShipped: false,
+          shippedAt: null,
+          shipDestination: null,
+        },
+        { transaction }
+      );
+      await recordStockMovement(
+        {
+          type: "manual_create",
+          actorUserId: req.sessionUser?.id,
+          after: snapshotStock(createdRow),
+          quantityDelta: qty,
+          referenceType: "stock_item",
+          referenceId: createdRow.id,
+        },
+        transaction
+      );
+      await recordAudit(
+        {
+          actorUserId: req.sessionUser?.id,
+          action: "stock.create",
+          entityType: "stock_item",
+          entityId: createdRow.id,
+          metadata: { sku: createdRow.sku, quantity: qty },
+        },
+        transaction
+      );
+      return createdRow;
     });
     const created = await StockItem.findByPk(row.id, { include: [includeMachine] });
     if (!created) {
@@ -102,7 +185,7 @@ router.post("/", async (req, res: Response) => {
 });
 
 /** Toplu makina / durum güncellemesi (tek işlemde). */
-router.patch("/bulk", async (req, res: Response) => {
+router.patch("/bulk", validateBody(bulkStockSchema), async (req: AuthRequest, res: Response) => {
   const { ids, machineId, processStatus } = req.body as {
     ids?: unknown;
     machineId?: number | string | null;
@@ -141,6 +224,7 @@ router.patch("/bulk", async (req, res: Response) => {
         if (!row) {
           throw new Error("NOT_FOUND");
         }
+        const before = snapshotStock(row);
         const prevProcess = row.processStatus;
 
         if (hasMachine) {
@@ -165,7 +249,29 @@ router.patch("/bulk", async (req, res: Response) => {
         }
 
         await row.save({ transaction });
+        await recordStockMovement(
+          {
+            type: "bulk_update",
+            actorUserId: req.sessionUser?.id,
+            before,
+            after: snapshotStock(row),
+            referenceType: "stock_bulk_update",
+            referenceId: id,
+            metadata: { machineChanged: hasMachine, statusChanged: hasStatus },
+          },
+          transaction
+        );
       }
+      await recordAudit(
+        {
+          actorUserId: req.sessionUser?.id,
+          action: "stock.bulk_update",
+          entityType: "stock_item",
+          entityId: null,
+          metadata: { ids: idNums, machineId, processStatus },
+        },
+        transaction
+      );
     });
     const rows = await StockItem.findAll({
       where: { id: idNums },
@@ -189,7 +295,7 @@ router.patch("/bulk", async (req, res: Response) => {
 });
 
 /** Sevk ekranı: toplu sevk işareti / hedef (yalnızca tamamlanmış stok). */
-router.patch("/bulk-sevk", async (req, res: Response) => {
+router.patch("/bulk-sevk", validateBody(bulkShipmentSchema), async (req: AuthRequest, res: Response) => {
   const { ids, action, shipDestination } = req.body as {
     ids?: unknown;
     action?: string;
@@ -222,6 +328,7 @@ router.patch("/bulk-sevk", async (req, res: Response) => {
         if (row.processStatus !== "tamamlandi") {
           throw new Error("NOT_COMPLETED");
         }
+        const before = snapshotStock(row);
 
         if (action === "unship") {
           row.isShipped = false;
@@ -249,7 +356,33 @@ router.patch("/bulk-sevk", async (req, res: Response) => {
         }
 
         await row.save({ transaction });
+        await recordStockMovement(
+          {
+            type:
+              action === "ship"
+                ? "ship"
+                : action === "unship"
+                  ? "unship"
+                  : "ship_destination",
+            actorUserId: req.sessionUser?.id,
+            before,
+            after: snapshotStock(row),
+            referenceType: "stock_bulk_sevk",
+            referenceId: id,
+          },
+          transaction
+        );
       }
+      await recordAudit(
+        {
+          actorUserId: req.sessionUser?.id,
+          action: `stock.${action}`,
+          entityType: "stock_item",
+          entityId: null,
+          metadata: { ids: idNums, shipDestination },
+        },
+        transaction
+      );
     });
     res.status(204).send();
   } catch (e) {
@@ -278,7 +411,7 @@ router.patch("/bulk-sevk", async (req, res: Response) => {
   }
 });
 
-router.patch("/:id", async (req, res: Response) => {
+router.patch("/:id", validateBody(stockUpdateSchema), async (req: AuthRequest, res: Response) => {
   const id = Number(req.params.id);
   if (Number.isNaN(id)) {
     res.status(400).json({ error: "Geçersiz id" });
@@ -323,6 +456,7 @@ router.patch("/:id", async (req, res: Response) => {
       if (!row) {
         throw new Error("NOT_FOUND");
       }
+      const before = snapshotStock(row);
 
       const prevProcess = row.processStatus;
 
@@ -398,6 +532,27 @@ router.patch("/:id", async (req, res: Response) => {
       }
 
       await row.save({ transaction });
+      await recordStockMovement(
+        {
+          type: "manual_update",
+          actorUserId: req.sessionUser?.id,
+          before,
+          after: snapshotStock(row),
+          referenceType: "stock_item",
+          referenceId: row.id,
+        },
+        transaction
+      );
+      await recordAudit(
+        {
+          actorUserId: req.sessionUser?.id,
+          action: "stock.update",
+          entityType: "stock_item",
+          entityId: row.id,
+          metadata: { before, after: snapshotStock(row) },
+        },
+        transaction
+      );
     });
 
     const updated = await StockItem.findByPk(id, { include: [includeMachine] });
@@ -425,15 +580,55 @@ router.patch("/:id", async (req, res: Response) => {
   }
 });
 
-router.delete("/:id", async (req, res: Response) => {
+router.delete("/:id", async (req: AuthRequest, res: Response) => {
   const id = Number(req.params.id);
   if (Number.isNaN(id)) {
     res.status(400).json({ error: "Geçersiz id" });
     return;
   }
-  const n = await StockItem.destroy({ where: { id } });
-  if (n === 0) {
-    res.status(404).json({ error: "Kayıt bulunamadı" });
+  try {
+    await sequelize.transaction(async (transaction) => {
+      const row = await StockItem.findByPk(id, {
+        transaction,
+        lock: transaction.LOCK.UPDATE,
+      });
+      if (!row) {
+        throw new Error("NOT_FOUND");
+      }
+      const before = snapshotStock(row);
+      await recordStockMovement(
+        {
+          type: "manual_update",
+          actorUserId: req.sessionUser?.id,
+          before,
+          sku: before.sku,
+          name: before.name,
+          quantityDelta: -(before.quantity ?? 0),
+          referenceType: "stock_item",
+          referenceId: row.id,
+          metadata: { deleted: true },
+        },
+        transaction
+      );
+      await recordAudit(
+        {
+          actorUserId: req.sessionUser?.id,
+          action: "stock.delete",
+          entityType: "stock_item",
+          entityId: row.id,
+          metadata: before,
+        },
+        transaction
+      );
+      await row.destroy({ transaction });
+    });
+  } catch (e) {
+    if (e instanceof Error && e.message === "NOT_FOUND") {
+      res.status(404).json({ error: "Kayıt bulunamadı" });
+      return;
+    }
+    console.error(e);
+    res.status(500).json({ error: "Silme işlemi başarısız" });
     return;
   }
   res.status(204).send();

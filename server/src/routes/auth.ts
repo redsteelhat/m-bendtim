@@ -1,4 +1,5 @@
 import { Router, Response } from "express";
+import rateLimit from "express-rate-limit";
 import bcrypt from "bcryptjs";
 import { User } from "../models/User";
 import {
@@ -7,10 +8,24 @@ import {
   requireAuth,
   attachUser,
 } from "../middleware/auth";
+import { trimmedString, validateBody, z } from "../middleware/validate";
 
 const router = Router();
 
-router.post("/login", async (req, res: Response) => {
+const loginSchema = z.object({
+  email: trimmedString("E-posta", 255).pipe(z.email("Geçerli bir e-posta girin")),
+  password: trimmedString("Şifre", 255),
+});
+
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Çok fazla giriş denemesi. Lütfen daha sonra tekrar deneyin." },
+});
+
+router.post("/login", loginLimiter, validateBody(loginSchema), async (req, res: Response) => {
   const { email, password } = req.body as { email?: string; password?: string };
   if (!email || !password) {
     res.status(400).json({ error: "E-posta ve şifre gerekli" });

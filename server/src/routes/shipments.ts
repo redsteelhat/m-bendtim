@@ -1,9 +1,39 @@
 import { Router, Response } from "express";
 import { Shipment } from "../models/Shipment";
 import { requireAuth, attachUser, AuthRequest } from "../middleware/auth";
+import {
+  nullableTrimmedString,
+  optionalTrimmedString,
+  trimmedString,
+  validateBody,
+  z,
+} from "../middleware/validate";
 
 const router = Router();
 router.use(requireAuth, attachUser);
+
+const shipmentStatusSchema = z.enum(["hazirlik", "yolda", "teslim", "iptal"]);
+const dateOnlySchema = trimmedString("Sevk tarihi", 32).pipe(
+  z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Sevk tarihi YYYY-MM-DD formatında olmalı")
+);
+
+const createShipmentSchema = z.object({
+  documentNo: trimmedString("Belge no", 64),
+  shippedAt: dateOnlySchema,
+  destination: trimmedString("Varış/hedef", 240),
+  notes: nullableTrimmedString("Not", 5000),
+  status: shipmentStatusSchema.optional(),
+});
+
+const updateShipmentSchema = z
+  .object({
+    documentNo: optionalTrimmedString("Belge no", 64),
+    shippedAt: dateOnlySchema.optional(),
+    destination: optionalTrimmedString("Varış/hedef", 240),
+    notes: nullableTrimmedString("Not", 5000),
+    status: shipmentStatusSchema.optional(),
+  })
+  .refine((body) => Object.keys(body).length > 0, "Güncellenecek alan gerekli");
 
 router.get("/", async (_req: AuthRequest, res: Response) => {
   const rows = await Shipment.findAll({ order: [["shippedAt", "DESC"], ["id", "DESC"]] });
@@ -24,7 +54,7 @@ router.get("/:id", async (req, res: Response) => {
   res.json(row);
 });
 
-router.post("/", async (req, res: Response) => {
+router.post("/", validateBody(createShipmentSchema), async (req, res: Response) => {
   const { documentNo, shippedAt, destination, notes, status } = req.body as {
     documentNo?: string;
     shippedAt?: string;
@@ -52,7 +82,7 @@ router.post("/", async (req, res: Response) => {
   }
 });
 
-router.patch("/:id", async (req, res: Response) => {
+router.patch("/:id", validateBody(updateShipmentSchema), async (req, res: Response) => {
   const id = Number(req.params.id);
   if (Number.isNaN(id)) {
     res.status(400).json({ error: "Geçersiz id" });

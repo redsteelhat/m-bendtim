@@ -61,6 +61,15 @@ Build Command: npm ci && npm run build
 Start Command: npm start
 ```
 
+İlk deploy öncesi veya şema değişikliklerinden sonra migration çalıştır:
+
+```bash
+npm run build
+npm run migrate:prod -- up
+```
+
+Render'da bunu manuel shell/job olarak çalıştırabilir veya deploy sürecine ayrı bir migration adımı olarak ekleyebilirsin. API start komutu migration veya seed çalıştırmaz.
+
 Backend environment variables:
 
 ```env
@@ -88,6 +97,14 @@ Başarılı cevap:
 { "ok": true }
 ```
 
+Readiness check:
+
+```text
+GET https://your-render-service.onrender.com/api/ready
+```
+
+`/api/ready`, veritabanı bağlantısını ve bekleyen migration durumunu kontrol eder. Bekleyen migration varsa `503` döner. Production ortamında backend, bekleyen migration varken başlamaz.
+
 ## 3. Vercel Frontend
 
 Vercel'de frontend için `client` klasörünü deploy et.
@@ -114,6 +131,7 @@ SPA route desteği için `client/vercel.json` dosyası vardır.
 
 - Supabase `DATABASE_URL` doğru ve parola URL encode edilmiş mi?
 - Render backend `/api/health` endpoint'i 200 dönüyor mu?
+- Render backend `/api/ready` endpoint'i 200 dönüyor mu?
 - Render `CORS_ORIGIN` içinde Vercel domaini var mı?
 - Vercel `VITE_API_BASE_URL` Render backend adresini gösteriyor mu?
 - Login isteği `/api/auth/login` üzerinden Render backend'e gidiyor mu?
@@ -161,3 +179,25 @@ Backend:
 cd server
 npm run build
 ```
+
+## 7. Migration Komutları
+
+Yerel ortamda:
+
+```bash
+cd server
+npm run migrate -- pending
+npm run migrate -- up
+npm run migrate -- executed
+```
+
+Production build sonrası:
+
+```bash
+cd server
+npm run build
+npm run migrate:prod -- pending
+npm run migrate:prod -- up
+```
+
+Migration'lar `server/src/migrations` altında tutulur. Production ortamında tablo oluşturma ve şema değişiklikleri app start sırasında değil, bu komutlarla yapılır.

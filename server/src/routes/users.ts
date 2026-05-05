@@ -7,8 +7,27 @@ import {
   requireAdmin,
   attachUser,
 } from "../middleware/auth";
+import { optionalTrimmedString, trimmedString, validateBody, z } from "../middleware/validate";
 
 const router = Router();
+
+const userRoleSchema = z.enum(["admin", "editor"]);
+
+const createUserSchema = z.object({
+  email: trimmedString("E-posta", 255).pipe(z.email("Geçerli bir e-posta girin")),
+  password: trimmedString("Şifre", 255).pipe(z.string().min(6, "Şifre en az 6 karakter olmalı")),
+  name: trimmedString("Ad", 120),
+  role: userRoleSchema.optional(),
+});
+
+const updateUserSchema = z
+  .object({
+    email: optionalTrimmedString("E-posta", 255).pipe(z.email("Geçerli bir e-posta girin").optional()),
+    password: optionalTrimmedString("Şifre", 255),
+    name: optionalTrimmedString("Ad", 120),
+    role: userRoleSchema.optional(),
+  })
+  .refine((body) => Object.keys(body).length > 0, "Güncellenecek alan gerekli");
 
 router.use(requireAuth, attachUser);
 
@@ -36,7 +55,7 @@ router.get("/:id", requireAdmin, async (req, res: Response) => {
   res.json(user);
 });
 
-router.post("/", requireAdmin, async (req, res: Response) => {
+router.post("/", requireAdmin, validateBody(createUserSchema), async (req, res: Response) => {
   const { email, password, name, role } = req.body as {
     email?: string;
     password?: string;
@@ -71,7 +90,7 @@ router.post("/", requireAdmin, async (req, res: Response) => {
   });
 });
 
-router.patch("/:id", requireAdmin, async (req, res: Response) => {
+router.patch("/:id", requireAdmin, validateBody(updateUserSchema), async (req, res: Response) => {
   const id = Number(req.params.id);
   if (Number.isNaN(id)) {
     res.status(400).json({ error: "Geçersiz id" });

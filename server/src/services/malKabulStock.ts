@@ -1,6 +1,7 @@
 import type { Transaction } from "sequelize";
 import { Op } from "sequelize";
 import { StockItem } from "../models/StockItem";
+import { recordStockMovement, snapshotStock } from "./stockMovement";
 
 function stockWhere(sku: string, machineId: number | null) {
   if (machineId == null) {
@@ -16,7 +17,14 @@ function wholeUnits(qty: number): number {
 
 /** Mal kabul: her adet için ayrı stok satırı (miktar = 1). */
 export async function incrementStockForMalKabul(
-  params: { sku: string; name: string; qty: number; machineId: number | null },
+  params: {
+    sku: string;
+    name: string;
+    qty: number;
+    machineId: number | null;
+    actorUserId?: number | null;
+    referenceId?: string | number | null;
+  },
   transaction: Transaction
 ): Promise<void> {
   const sku = params.sku.trim();
@@ -28,7 +36,7 @@ export async function incrementStockForMalKabul(
   }
 
   for (let i = 0; i < units; i += 1) {
-    await StockItem.create(
+    const row = await StockItem.create(
       {
         sku,
         name,
@@ -42,6 +50,17 @@ export async function incrementStockForMalKabul(
       },
       { transaction }
     );
+    await recordStockMovement(
+      {
+        type: "mal_kabul",
+        actorUserId: params.actorUserId,
+        after: snapshotStock(row),
+        quantityDelta: 1,
+        referenceType: "goods_receipt_line",
+        referenceId: params.referenceId,
+      },
+      transaction
+    );
   }
 }
 
@@ -50,7 +69,8 @@ export async function decrementStockForMalKabul(
   materialCode: string,
   machineId: number | null,
   qty: number,
-  transaction: Transaction
+  transaction: Transaction,
+  options: { actorUserId?: number | null; referenceId?: string | number | null } = {}
 ): Promise<void> {
   const sku = materialCode.trim();
   const units = wholeUnits(qty);
@@ -65,6 +85,20 @@ export async function decrementStockForMalKabul(
   });
 
   for (const row of rows) {
+    const before = snapshotStock(row);
     await row.destroy({ transaction });
+    await recordStockMovement(
+      {
+        type: "mal_kabul_iptal",
+        actorUserId: options.actorUserId,
+        before,
+        sku: before.sku,
+        name: before.name,
+        quantityDelta: -1,
+        referenceType: "goods_receipt_line",
+        referenceId: options.referenceId,
+      },
+      transaction
+    );
   }
 }

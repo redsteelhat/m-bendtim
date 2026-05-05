@@ -3,9 +3,13 @@ import { Machine } from "./Machine";
 import { StockItem } from "./StockItem";
 import { GoodsReceiptLine } from "./GoodsReceiptLine";
 import { Shipment } from "./Shipment";
+import { AuditLog } from "./AuditLog";
+import { StockMovement } from "./StockMovement";
 
 Machine.hasMany(StockItem, { foreignKey: "machineId", as: "stockItems" });
 StockItem.belongsTo(Machine, { foreignKey: "machineId", as: "machine" });
+StockItem.hasMany(StockMovement, { foreignKey: "stockItemId", as: "movements" });
+StockMovement.belongsTo(StockItem, { foreignKey: "stockItemId", as: "stockItem" });
 
 export const models = {
   User,
@@ -13,6 +17,8 @@ export const models = {
   StockItem,
   GoodsReceiptLine,
   Shipment,
+  AuditLog,
+  StockMovement,
 };
 
 export async function syncModels(): Promise<void> {
@@ -22,4 +28,6 @@ export async function syncModels(): Promise<void> {
   await StockItem.sync({ alter });
   await GoodsReceiptLine.sync({ alter });
   await Shipment.sync({ alter });
+  await AuditLog.sync({ alter });
+  await StockMovement.sync({ alter });
 }

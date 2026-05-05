@@ -5,9 +5,22 @@ import {
   aggregateStockByMachine,
   serializeMachineWithStock,
 } from "../services/machineStockStatus";
+import { optionalTrimmedString, trimmedString, validateBody, z } from "../middleware/validate";
 
 const router = Router();
 router.use(requireAuth, attachUser);
+
+const createMachineSchema = z.object({
+  code: trimmedString("Makina kodu", 64),
+  name: trimmedString("Seri no", 200),
+});
+
+const updateMachineSchema = z
+  .object({
+    code: optionalTrimmedString("Makina kodu", 64),
+    name: optionalTrimmedString("Seri no", 200),
+  })
+  .refine((body) => Object.keys(body).length > 0, "Güncellenecek alan gerekli");
 
 router.get("/", async (_req: AuthRequest, res: Response) => {
   const rows = await Machine.findAll({
@@ -33,7 +46,7 @@ router.get("/:id", async (req, res: Response) => {
   res.json(serializeMachineWithStock(row, agg.get(row.id)));
 });
 
-router.post("/", async (req, res: Response) => {
+router.post("/", validateBody(createMachineSchema), async (req, res: Response) => {
   const { code, name } = req.body as {
     code?: string;
     name?: string;
@@ -54,7 +67,7 @@ router.post("/", async (req, res: Response) => {
   }
 });
 
-router.patch("/:id", async (req, res: Response) => {
+router.patch("/:id", validateBody(updateMachineSchema), async (req, res: Response) => {
   const id = Number(req.params.id);
   if (Number.isNaN(id)) {
     res.status(400).json({ error: "Geçersiz id" });
