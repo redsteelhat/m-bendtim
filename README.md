@@ -228,3 +228,4 @@ npm run build
 - Vercel `VITE_API_BASE_URL` Render backend URL'ini gösteriyor mu?
 - Render `CORS_ORIGIN` Vercel domaini ile aynı mı?
 - Production secret değerleri placeholder değil mi?
+
