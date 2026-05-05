@@ -72,9 +72,6 @@ DB_SSL=true
 DB_SSL_REJECT_UNAUTHORIZED=false
 JWT_SECRET=change-this-to-a-real-32-plus-character-random-secret
 CORS_ORIGIN=https://your-vercel-domain.vercel.app
-SEED_ADMIN_EMAIL=admin@company.com
-SEED_ADMIN_PASSWORD=change-this-secure-admin-password
-SEED_ADMIN_NAME=Yonetici
 ```
 
 Production güvenlik kontrolleri backend açılışında çalışır. Aşağıdaki durumlarda backend bilinçli olarak başlamaz:
@@ -84,7 +81,6 @@ Production güvenlik kontrolleri backend açılışında çalışır. Aşağıda
 - `JWT_SECRET` eksik, placeholder veya 32 karakterden kısa ise
 - `CORS_ORIGIN=*` ise
 - `DB_SSL=true` değilse
-- `SEED_ADMIN_PASSWORD` `admin123` veya placeholder ise
 
 Health endpoint:
 
@@ -135,7 +131,17 @@ SPA route desteği için `client/vercel.json` dosyası vardır.
 
 Seed komutu otomatik start sırasında çalışmaz.
 
-Gerekirse Render shell/job üzerinden:
+Seed env değişkenleri sadece ilk admin kullanıcısını terminal/job üzerinden oluşturacağın zaman gerekir. Render API servisinin normal deploy env listesinde zorunlu değildir.
+
+Gerekirse Render shell/job env değerleri:
+
+```env
+SEED_ADMIN_EMAIL=admin@company.com
+SEED_ADMIN_PASSWORD=change-this-secure-admin-password
+SEED_ADMIN_NAME=Yonetici
+```
+
+Ardından:
 
 ```bash
 cd server

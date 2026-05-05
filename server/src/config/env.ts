@@ -56,14 +56,4 @@ export function validateProductionEnv(): void {
   if (process.env.DB_SSL !== "true") {
     throw new Error("Production env hatalı: DB_SSL=true olmalı");
   }
-
-  const seedPassword = process.env.SEED_ADMIN_PASSWORD?.trim();
-  if (
-    seedPassword &&
-    (unsafeValues.has(seedPassword) ||
-      seedPassword.toLowerCase().startsWith("change-me") ||
-      seedPassword.length < 10)
-  ) {
-    throw new Error("Production env hatalı: SEED_ADMIN_PASSWORD güvenli bir değer olmalı");
-  }
 }

@@ -38,9 +38,6 @@ DB_SSL=true
 DB_SSL_REJECT_UNAUTHORIZED=false
 JWT_SECRET=change-this-to-a-real-32-plus-character-random-secret
 CORS_ORIGIN=https://your-vercel-domain.vercel.app
-SEED_ADMIN_EMAIL=admin@company.com
-SEED_ADMIN_PASSWORD=change-this-secure-admin-password
-SEED_ADMIN_NAME=Yonetici
 ```
 
 Health checks:
@@ -71,6 +68,12 @@ VITE_API_BASE_URL=https://your-render-backend-url
 ## 4. Manual Operations
 
 İlk admin kullanıcısını oluşturmak için gerekirse Render shell/job:
+
+```env
+SEED_ADMIN_EMAIL=admin@company.com
+SEED_ADMIN_PASSWORD=change-this-secure-admin-password
+SEED_ADMIN_NAME=Yonetici
+```
 
 ```bash
 npm run seed
