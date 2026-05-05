@@ -53,7 +53,13 @@ DATABASE_URL=https://your-project.supabase.co
 
 Render servis tipi: Web Service
 
-Önerilen native Node deploy ayarları:
+Bu repo Dockerfile ile deploy ediliyorsa container başlangıcında migration otomatik çalışır:
+
+```text
+Docker start: npm run migrate:prod -- up && npm start
+```
+
+Native Node deploy kullanıyorsan ayarlar:
 
 ```text
 Root Directory: server
@@ -228,4 +234,3 @@ npm run build
 - Vercel `VITE_API_BASE_URL` Render backend URL'ini gösteriyor mu?
 - Render `CORS_ORIGIN` Vercel domaini ile aynı mı?
 - Production secret değerleri placeholder değil mi?
-

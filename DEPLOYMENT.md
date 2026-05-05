@@ -19,7 +19,13 @@ DB_SSL_REJECT_UNAUTHORIZED=false
 
 ## 2. Render Backend
 
-Render Web Service ayarları:
+Docker deploy kullanıyorsan `server/Dockerfile` container başlangıcında migration çalıştırır:
+
+```text
+npm run migrate:prod -- up && npm start
+```
+
+Native Node deploy kullanıyorsan Render Web Service ayarları:
 
 ```text
 Root Directory: server
