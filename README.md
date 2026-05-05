@@ -23,6 +23,7 @@ Supabase projesinde PostgreSQL bağlantı bilgisini al.
 - Transaction pooler
 - Port: `6543`
 - `sslmode=require`
+- Kullanıcı adı genelde `postgres.PROJECT_REF` formatındadır
 
 Örnek `DATABASE_URL`:
 
@@ -30,7 +31,19 @@ Supabase projesinde PostgreSQL bağlantı bilgisini al.
 DATABASE_URL=postgresql://postgres.PROJECT_REF:ENCODED_PASSWORD@aws-0-eu-central-1.pooler.supabase.com:6543/postgres?sslmode=require
 ```
 
-Parolada `#`, `+`, `!`, `@`, `:` gibi özel karakterler varsa URL encode edilmelidir. Yanlış veya encode edilmemiş parola genelde şu hatayı üretir:
+Bu değer Supabase project API URL'i değildir. Render backend'in PostgreSQL'e bağlanması için Supabase Dashboard'daki database connection string kullanılmalıdır.
+
+Parolada `#`, `+`, `!`, `@`, `:` gibi özel karakterler varsa URL encode edilmelidir:
+
+```text
+# -> %23
++ -> %2B
+! -> %21
+@ -> %40
+: -> %3A
+```
+
+Yanlış parola, yanlış proje referansı veya encode edilmemiş parola genelde şu hatayı üretir:
 
 ```text
 password authentication failed for user "postgres"
