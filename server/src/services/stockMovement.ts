@@ -20,6 +20,7 @@ export function snapshotStock(row: StockItem) {
     machineId: row.machineId ?? null,
     processStatus: row.processStatus,
     isShipped: row.isShipped,
+    shippedAt: row.shippedAt ?? null,
     shipDestination: row.shipDestination ?? null,
   };
 }

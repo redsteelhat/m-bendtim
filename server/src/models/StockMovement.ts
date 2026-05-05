@@ -13,6 +13,8 @@ export type StockMovementType =
   | "manual_create"
   | "manual_update"
   | "bulk_update"
+  | "machine_assignment"
+  | "status_change"
   | "ship"
   | "unship"
   | "ship_destination";

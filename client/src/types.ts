@@ -49,6 +49,8 @@ export interface StockItem {
   quantity: string | number;
   unit: string;
   machineId: number | null;
+  goodsReceiptLineId?: number | null;
+  trackingCode?: string | null;
   processStatus: StockProcessStatus;
   isShipped: boolean;
   shippedAt: string | null;
@@ -57,6 +59,42 @@ export interface StockItem {
   machine?: { id: number; code: string; name: string } | null;
   createdAt?: string;
   updatedAt?: string;
+}
+
+export type StockMovementType =
+  | "mal_kabul"
+  | "mal_kabul_iptal"
+  | "manual_create"
+  | "manual_update"
+  | "bulk_update"
+  | "machine_assignment"
+  | "status_change"
+  | "ship"
+  | "unship"
+  | "ship_destination";
+
+export interface StockMovement {
+  id: number;
+  stockItemId: number | null;
+  actorUserId: number | null;
+  type: StockMovementType;
+  sku: string;
+  name: string | null;
+  quantityBefore: string | number | null;
+  quantityAfter: string | number | null;
+  quantityDelta: string | number;
+  machineIdBefore: number | null;
+  machineIdAfter: number | null;
+  processStatusBefore: StockProcessStatus | null;
+  processStatusAfter: StockProcessStatus | null;
+  isShippedBefore: boolean | null;
+  isShippedAfter: boolean | null;
+  shipDestinationBefore: string | null;
+  shipDestinationAfter: string | null;
+  actorUser?: Pick<User, "id" | "name" | "email" | "role"> | null;
+  machineBefore?: { id: number; code?: string; name?: string } | null;
+  machineAfter?: { id: number; code?: string; name?: string } | null;
+  createdAt: string;
 }
 
 /** Mal kabul satırı; stok (makinasız) miktarını artırır. */

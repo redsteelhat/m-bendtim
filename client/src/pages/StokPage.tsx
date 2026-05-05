@@ -1,7 +1,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../api";
 import { useAuth } from "../auth/AuthContext";
-import type { Machine, StockItem, StockProcessStatus } from "../types";
+import type { Machine, StockItem, StockMovement, StockMovementType, StockProcessStatus } from "../types";
 import { formatQtyInteger } from "../formatQty";
 import dStyles from "./dataPage.module.css";
 import pStyles from "./StokPage.module.css";
@@ -11,6 +11,33 @@ const statusLabel: Record<StockProcessStatus, string> = {
   isleniyor: "İşleniyor",
   tamamlandi: "Tamamlandı",
 };
+
+const movementTypeLabel: Record<StockMovementType, string> = {
+  mal_kabul: "Mal kabul",
+  mal_kabul_iptal: "Mal kabul iptali",
+  manual_create: "Manuel oluşturma",
+  manual_update: "Manuel güncelleme",
+  bulk_update: "Toplu güncelleme",
+  machine_assignment: "Makina ataması",
+  status_change: "Durum değişikliği",
+  ship: "Sevk edildi",
+  unship: "Sevk geri alındı",
+  ship_destination: "Sevk hedefi güncellendi",
+};
+
+function machineLabel(machine?: { id: number; code?: string; name?: string } | null, id?: number | null) {
+  if (machine?.code || machine?.name) return `${machine.code ?? `#${machine.id}`} — ${machine.name ?? ""}`.trim();
+  if (id != null) return `#${id}`;
+  return "—";
+}
+
+function formatDateTime(value?: string) {
+  if (!value) return "—";
+  return new Intl.DateTimeFormat("tr-TR", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(value));
+}
 
 function rowClass(s: StockProcessStatus): string {
   if (s === "isleniyor") return pStyles.rowIsleniyor;
@@ -39,6 +66,7 @@ export function StokPage() {
   const [bulkStatus, setBulkStatus] = useState<StockProcessStatus>("bekliyor");
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkError, setBulkError] = useState<string | null>(null);
+  const [detailRow, setDetailRow] = useState<StockItem | null>(null);
 
   const selectedCount = selectedIds.size;
   const allIds = useMemo(() => rows.map((r) => r.id), [rows]);
@@ -244,7 +272,8 @@ export function StokPage() {
                 <th>Miktar</th>
                 <th>Birim</th>
                 <th>Makina</th>
-                {canWrite && <th />}
+                <th>Sevk</th>
+                <th />
               </tr>
             </thead>
             <tbody>
@@ -277,11 +306,21 @@ export function StokPage() {
                         ? `#${r.machineId}`
                         : "—"}
                   </td>
-                  {canWrite && (
-                    <td className={dStyles.actions}>
+                  <td>{r.isShipped ? "Sevk edildi" : "Bekliyor"}</td>
+                  <td className={dStyles.actions}>
+                    <button
+                      type="button"
+                      className={dStyles.linkBtn}
+                      onClick={() => setDetailRow(r)}
+                    >
+                      Detay
+                    </button>
+                    {canWrite && (
+                      <>
                       <button
                         type="button"
                         className={dStyles.linkBtn}
+                        disabled={r.isShipped}
                         onClick={() => {
                           setEditing(r);
                           setFormError(null);
@@ -293,6 +332,7 @@ export function StokPage() {
                       <button
                         type="button"
                         className={dStyles.dangerBtn}
+                        disabled={r.isShipped}
                         onClick={async () => {
                           if (!confirm(`Malzeme kodu «${r.sku}» silinsin mi?`)) return;
                           try {
@@ -305,8 +345,9 @@ export function StokPage() {
                       >
                         Sil
                       </button>
-                    </td>
-                  )}
+                      </>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -326,6 +367,121 @@ export function StokPage() {
           }}
         />
       )}
+      {detailRow && <StockDetailDrawer row={detailRow} onClose={() => setDetailRow(null)} />}
+    </div>
+  );
+}
+
+function StockDetailDrawer({ row, onClose }: { row: StockItem; onClose: () => void }) {
+  const [movements, setMovements] = useState<StockMovement[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    setLoading(true);
+    setError(null);
+    api<StockMovement[]>(`/api/stock/${row.id}/movements`)
+      .then((data) => {
+        if (mounted) setMovements(data);
+      })
+      .catch((err) => {
+        if (mounted) setError(err instanceof Error ? err.message : "Hareket geçmişi alınamadı");
+      })
+      .finally(() => {
+        if (mounted) setLoading(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [row.id]);
+
+  return (
+    <div className={dStyles.overlay} role="presentation" onClick={onClose}>
+      <div
+        className={`${dStyles.modal} ${dStyles.modalWide}`}
+        role="dialog"
+        aria-modal
+        onClick={(ev) => ev.stopPropagation()}
+      >
+        <h2 className={dStyles.modalTitle}>Stok detayı</h2>
+        <div className={pStyles.detailGrid}>
+          <div className={pStyles.readonlyBlock}>
+            <span>Malzeme kodu</span>
+            <p className={pStyles.readonlyValue}>{row.sku}</p>
+          </div>
+          <div className={pStyles.readonlyBlock}>
+            <span>Ürün adı</span>
+            <p className={pStyles.readonlyValue}>{row.name}</p>
+          </div>
+          <div className={pStyles.readonlyBlock}>
+            <span>Miktar</span>
+            <p className={pStyles.readonlyValue}>
+              {formatQtyInteger(row.quantity)} {row.unit}
+            </p>
+          </div>
+          <div className={pStyles.readonlyBlock}>
+            <span>Durum</span>
+            <p className={pStyles.readonlyValue}>{statusLabel[row.processStatus]}</p>
+          </div>
+          <div className={pStyles.readonlyBlock}>
+            <span>Makina</span>
+            <p className={pStyles.readonlyValue}>
+              {row.machine ? `${row.machine.code} — ${row.machine.name}` : "—"}
+            </p>
+          </div>
+          <div className={pStyles.readonlyBlock}>
+            <span>Takip kodu</span>
+            <p className={pStyles.readonlyValue}>{row.trackingCode ?? "—"}</p>
+          </div>
+          <div className={pStyles.readonlyBlock}>
+            <span>Sevk</span>
+            <p className={pStyles.readonlyValue}>
+              {row.isShipped ? `${row.shipDestination ?? "Sevk edildi"} (${row.shippedAt ?? "tarih yok"})` : "Bekliyor"}
+            </p>
+          </div>
+        </div>
+
+        <p className={pStyles.sectionTitle}>Hareket Geçmişi</p>
+        {loading && <p className="muted">Yükleniyor…</p>}
+        {error && <p className={dStyles.formErr}>{error}</p>}
+        {!loading && !error && movements.length === 0 && (
+          <p className="muted">Bu stok için hareket kaydı yok.</p>
+        )}
+        <div className={pStyles.timeline}>
+          {movements.map((movement) => (
+            <div key={movement.id} className={pStyles.timelineItem}>
+              <div className={pStyles.timelineHead}>
+                <strong>{movementTypeLabel[movement.type] ?? movement.type}</strong>
+                <span>{formatDateTime(movement.createdAt)}</span>
+              </div>
+              <div className={pStyles.timelineMeta}>
+                <span>
+                  Miktar: {movement.quantityBefore ?? "—"} → {movement.quantityAfter ?? "—"}
+                </span>
+                <span>
+                  Makina: {machineLabel(movement.machineBefore, movement.machineIdBefore)} →{" "}
+                  {machineLabel(movement.machineAfter, movement.machineIdAfter)}
+                </span>
+                <span>
+                  Durum:{" "}
+                  {movement.processStatusBefore ? statusLabel[movement.processStatusBefore] : "—"} →{" "}
+                  {movement.processStatusAfter ? statusLabel[movement.processStatusAfter] : "—"}
+                </span>
+                <span>
+                  Kullanıcı: {movement.actorUser?.name ?? movement.actorUser?.email ?? "Sistem"}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className={dStyles.modalActions}>
+          <button type="button" className={dStyles.primary} onClick={onClose}>
+            Kapat
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

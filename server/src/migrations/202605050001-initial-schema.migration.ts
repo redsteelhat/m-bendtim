@@ -39,29 +39,6 @@ CREATE TABLE IF NOT EXISTS "machines" (
   `);
 
   await context.sequelize.query(`
-CREATE TABLE IF NOT EXISTS "stock_items" (
-  "id" SERIAL PRIMARY KEY,
-  "sku" VARCHAR(80) NOT NULL,
-  "name" VARCHAR(200) NOT NULL,
-  "quantity" DECIMAL(14, 3) NOT NULL DEFAULT 0,
-  "unit" VARCHAR(24) NOT NULL DEFAULT 'adet',
-  "machineId" INTEGER NULL REFERENCES "machines"("id") ON DELETE SET NULL ON UPDATE CASCADE,
-  "processStatus" "enum_stock_items_processStatus" NOT NULL DEFAULT 'bekliyor',
-  "isShipped" BOOLEAN NOT NULL DEFAULT false,
-  "shippedAt" DATE NULL,
-  "shipDestination" VARCHAR(200) NULL,
-  "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-  `);
-
-  await context.sequelize.query(`
-CREATE UNIQUE INDEX IF NOT EXISTS "uniq_stock_sku_with_machine"
-ON "stock_items" ("sku", "machineId")
-WHERE "machineId" IS NOT NULL;
-  `);
-
-  await context.sequelize.query(`
 CREATE TABLE IF NOT EXISTS "goods_receipt_lines" (
   "id" SERIAL PRIMARY KEY,
   "irsaliyeNo" VARCHAR(64) NOT NULL,
@@ -73,6 +50,38 @@ CREATE TABLE IF NOT EXISTS "goods_receipt_lines" (
   "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
   `);
+
+  await context.sequelize.query(`
+CREATE TABLE IF NOT EXISTS "stock_items" (
+  "id" SERIAL PRIMARY KEY,
+  "sku" VARCHAR(80) NOT NULL,
+  "name" VARCHAR(200) NOT NULL,
+  "quantity" DECIMAL(14, 3) NOT NULL DEFAULT 0,
+  "unit" VARCHAR(24) NOT NULL DEFAULT 'adet',
+  "machineId" INTEGER NULL REFERENCES "machines"("id") ON DELETE SET NULL ON UPDATE CASCADE,
+  "goodsReceiptLineId" INTEGER NULL REFERENCES "goods_receipt_lines"("id") ON DELETE SET NULL ON UPDATE CASCADE,
+  "trackingCode" VARCHAR(120) NULL,
+  "processStatus" "enum_stock_items_processStatus" NOT NULL DEFAULT 'bekliyor',
+  "isShipped" BOOLEAN NOT NULL DEFAULT false,
+  "shippedAt" DATE NULL,
+  "shipDestination" VARCHAR(200) NULL,
+  "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT "stock_items_quantity_non_negative" CHECK ("quantity" >= 0),
+  CONSTRAINT "stock_items_shipped_requires_date" CHECK ("isShipped" = false OR "shippedAt" IS NOT NULL),
+  CONSTRAINT "stock_items_shipped_only_completed" CHECK ("processStatus" = 'tamamlandi' OR "isShipped" = false)
+);
+  `);
+
+  await context.sequelize.query(
+    'CREATE INDEX IF NOT EXISTS "stock_items_sku_idx" ON "stock_items" ("sku");'
+  );
+  await context.sequelize.query(
+    'CREATE INDEX IF NOT EXISTS "stock_items_machine_id_idx" ON "stock_items" ("machineId");'
+  );
+  await context.sequelize.query(
+    'CREATE INDEX IF NOT EXISTS "stock_items_goods_receipt_line_id_idx" ON "stock_items" ("goodsReceiptLineId");'
+  );
 
   await context.sequelize.query(`
 CREATE TABLE IF NOT EXISTS "shipments" (
@@ -90,8 +99,8 @@ CREATE TABLE IF NOT EXISTS "shipments" (
 
 export async function down({ context }: { context: QueryInterface }): Promise<void> {
   await context.sequelize.query('DROP TABLE IF EXISTS "shipments" CASCADE;');
-  await context.sequelize.query('DROP TABLE IF EXISTS "goods_receipt_lines" CASCADE;');
   await context.sequelize.query('DROP TABLE IF EXISTS "stock_items" CASCADE;');
+  await context.sequelize.query('DROP TABLE IF EXISTS "goods_receipt_lines" CASCADE;');
   await context.sequelize.query('DROP TABLE IF EXISTS "machines" CASCADE;');
   await context.sequelize.query('DROP TABLE IF EXISTS "users" CASCADE;');
   await context.sequelize.query('DROP TYPE IF EXISTS "enum_shipments_status";');

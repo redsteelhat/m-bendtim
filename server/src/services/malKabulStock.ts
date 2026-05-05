@@ -43,6 +43,11 @@ export async function incrementStockForMalKabul(
         quantity: 1,
         unit: "adet",
         machineId,
+        goodsReceiptLineId:
+          params.referenceId == null || Number.isNaN(Number(params.referenceId))
+            ? null
+            : Number(params.referenceId),
+        trackingCode: null,
         processStatus: "bekliyor",
         isShipped: false,
         shippedAt: null,

@@ -4,7 +4,6 @@ import {
   InferAttributes,
   InferCreationAttributes,
   CreationOptional,
-  Op,
 } from "sequelize";
 import { sequelize } from "../db";
 
@@ -20,6 +19,8 @@ export class StockItem extends Model<
   declare quantity: number;
   declare unit: string;
   declare machineId: CreationOptional<number | null>;
+  declare goodsReceiptLineId: CreationOptional<number | null>;
+  declare trackingCode: CreationOptional<string | null>;
   declare processStatus: StockProcessStatus;
   declare isShipped: CreationOptional<boolean>;
   declare shippedAt: CreationOptional<Date | null>;
@@ -50,6 +51,14 @@ StockItem.init(
       onDelete: "SET NULL",
       onUpdate: "CASCADE",
     },
+    goodsReceiptLineId: {
+      type: DataTypes.INTEGER.UNSIGNED,
+      allowNull: true,
+      references: { model: "goods_receipt_lines", key: "id" },
+      onDelete: "SET NULL",
+      onUpdate: "CASCADE",
+    },
+    trackingCode: { type: DataTypes.STRING(120), allowNull: true },
     processStatus: {
       type: DataTypes.ENUM("bekliyor", "isleniyor", "tamamlandi"),
       allowNull: false,
@@ -69,13 +78,6 @@ StockItem.init(
     sequelize,
     tableName: "stock_items",
     modelName: "StockItem",
-    indexes: [
-      {
-        name: "uniq_stock_sku_with_machine",
-        unique: true,
-        fields: ["sku", "machineId"],
-        where: { machineId: { [Op.ne]: null } },
-      },
-    ],
+    indexes: [{ fields: ["sku"] }, { fields: ["machineId"] }, { fields: ["goodsReceiptLineId"] }],
   }
 );

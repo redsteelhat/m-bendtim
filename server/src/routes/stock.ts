@@ -1,6 +1,8 @@
 import { Router, Response } from "express";
 import { StockItem } from "../models/StockItem";
 import { Machine } from "../models/Machine";
+import { StockMovement, type StockMovementType } from "../models/StockMovement";
+import { User } from "../models/User";
 import { sequelize } from "../db";
 import { dateOnlyLocal } from "../dateOnlyLocal";
 import { requireAuth, attachUser, AuthRequest, requirePermission } from "../middleware/auth";
@@ -31,11 +33,33 @@ const includeMachine = {
 const processValues: StockProcessStatus[] = ["bekliyor", "isleniyor", "tamamlandi"];
 const processStatusSchema = z.enum(processValues);
 
+function isAdmin(req: AuthRequest): boolean {
+  return req.sessionUser?.role === "admin";
+}
+
+function ensureShippedStockEditable(row: StockItem, req: AuthRequest): void {
+  if (row.isShipped && !isAdmin(req)) {
+    throw new Error("SHIPPED_LOCKED");
+  }
+}
+
+function movementTypeForUpdate(
+  before: ReturnType<typeof snapshotStock>,
+  after: ReturnType<typeof snapshotStock>
+): StockMovementType {
+  const machineChanged = before.machineId !== after.machineId;
+  const statusChanged = before.processStatus !== after.processStatus;
+  if (machineChanged && !statusChanged) return "machine_assignment";
+  if (statusChanged && !machineChanged) return "status_change";
+  return "manual_update";
+}
+
 const createStockSchema = z.object({
   sku: trimmedString("Malzeme kodu", 80),
   name: trimmedString("Ürün adı", 200),
   quantity: nonNegativeQuantity.optional(),
   unit: optionalTrimmedString("Birim", 24),
+  trackingCode: nullableTrimmedString("Takip kodu", 120).optional(),
 });
 
 const bulkStockSchema = z
@@ -71,6 +95,7 @@ const stockUpdateSchema = z
     processStatus: processStatusSchema.optional(),
     isShipped: z.boolean().optional(),
     shipDestination: nullableTrimmedString("Sevk hedefi", 200),
+    trackingCode: nullableTrimmedString("Takip kodu", 120),
   })
   .refine((body) => Object.keys(body).length > 0, "Güncellenecek alan gerekli");
 
@@ -100,6 +125,63 @@ router.get("/sevk-bekleyen", requirePermission("shipments.read"), async (_req: A
   res.json(await attachMalKabulProductNames(rows));
 });
 
+router.get("/:id/movements", requirePermission("stock.read"), async (req, res: Response) => {
+  const id = Number(req.params.id);
+  if (Number.isNaN(id)) {
+    res.status(400).json({ error: "Geçersiz id" });
+    return;
+  }
+
+  const exists = await StockItem.findByPk(id, { attributes: ["id"] });
+  if (!exists) {
+    res.status(404).json({ error: "Kayıt bulunamadı" });
+    return;
+  }
+
+  const movements = await StockMovement.findAll({
+    where: { stockItemId: id },
+    include: [
+      {
+        model: User,
+        as: "actorUser",
+        attributes: ["id", "name", "email", "role"],
+        required: false,
+      },
+    ],
+    order: [["createdAt", "DESC"]],
+    limit: 100,
+  });
+
+  const machineIds = new Set<number>();
+  for (const movement of movements) {
+    if (movement.machineIdBefore != null) machineIds.add(Number(movement.machineIdBefore));
+    if (movement.machineIdAfter != null) machineIds.add(Number(movement.machineIdAfter));
+  }
+  const machines =
+    machineIds.size > 0
+      ? await Machine.findAll({
+          where: { id: [...machineIds] },
+          attributes: ["id", "code", "name"],
+        })
+      : [];
+  const machineById = new Map(
+    machines.map((machine) => [machine.id, machine.get({ plain: true })])
+  );
+
+  res.json(
+    movements.map((movement) => {
+      const plain = movement.get({ plain: true }) as Record<string, unknown>;
+      const beforeId = movement.machineIdBefore == null ? null : Number(movement.machineIdBefore);
+      const afterId = movement.machineIdAfter == null ? null : Number(movement.machineIdAfter);
+      return {
+        ...plain,
+        machineBefore: beforeId == null ? null : machineById.get(beforeId) ?? { id: beforeId },
+        machineAfter: afterId == null ? null : machineById.get(afterId) ?? { id: afterId },
+      };
+    })
+  );
+});
+
 router.get("/:id", requirePermission("stock.read"), async (req, res: Response) => {
   const id = Number(req.params.id);
   if (Number.isNaN(id)) {
@@ -116,11 +198,12 @@ router.get("/:id", requirePermission("stock.read"), async (req, res: Response) =
 });
 
 router.post("/", requirePermission("stock.write"), validateBody(createStockSchema), async (req: AuthRequest, res: Response) => {
-  const { sku, name, quantity, unit } = req.body as {
+  const { sku, name, quantity, unit, trackingCode } = req.body as {
     sku?: string;
     name?: string;
     quantity?: number | string;
     unit?: string;
+    trackingCode?: string | null;
   };
   if (!sku?.trim() || !name?.trim()) {
     res.status(400).json({ error: "Malzeme kodu ve ürün adı gerekli" });
@@ -141,6 +224,8 @@ router.post("/", requirePermission("stock.write"), validateBody(createStockSchem
           quantity: qty,
           unit: (unit?.trim() || "adet").slice(0, 24),
           machineId: null,
+          goodsReceiptLineId: null,
+          trackingCode: trackingCode ? trackingCode.trim().slice(0, 120) : null,
           processStatus: "bekliyor",
           isShipped: false,
           shippedAt: null,
@@ -224,6 +309,7 @@ router.patch("/bulk", requirePermission("stock.write"), validateBody(bulkStockSc
         if (!row) {
           throw new Error("NOT_FOUND");
         }
+        ensureShippedStockEditable(row, req);
         const before = snapshotStock(row);
         const prevProcess = row.processStatus;
 
@@ -251,7 +337,7 @@ router.patch("/bulk", requirePermission("stock.write"), validateBody(bulkStockSc
         await row.save({ transaction });
         await recordStockMovement(
           {
-            type: "bulk_update",
+            type: hasMachine && !hasStatus ? "machine_assignment" : hasStatus && !hasMachine ? "status_change" : "bulk_update",
             actorUserId: req.sessionUser?.id,
             before,
             after: snapshotStock(row),
@@ -287,6 +373,12 @@ router.patch("/bulk", requirePermission("stock.write"), validateBody(bulkStockSc
   } catch (e) {
     if (e instanceof Error && e.message === "NOT_FOUND") {
       res.status(404).json({ error: "Seçilen kayıtlardan biri bulunamadı" });
+      return;
+    }
+    if (e instanceof Error && e.message === "SHIPPED_LOCKED") {
+      res.status(409).json({
+        error: "Sevk edilmiş stok yalnızca sevk ekranından veya admin override ile değiştirilebilir",
+      });
       return;
     }
     console.error(e);
@@ -428,6 +520,7 @@ router.patch("/:id", requirePermission("stock.write"), validateBody(stockUpdateS
     processStatus,
     isShipped,
     shipDestination,
+    trackingCode,
   } = req.body as {
     sku?: string;
     name?: string;
@@ -438,6 +531,7 @@ router.patch("/:id", requirePermission("stock.write"), validateBody(stockUpdateS
     processStatus?: string;
     isShipped?: boolean;
     shipDestination?: string | null;
+    trackingCode?: string | null;
   };
 
   const newCode = newMachine?.code?.trim();
@@ -456,6 +550,7 @@ router.patch("/:id", requirePermission("stock.write"), validateBody(stockUpdateS
       if (!row) {
         throw new Error("NOT_FOUND");
       }
+      ensureShippedStockEditable(row, req);
       const before = snapshotStock(row);
 
       const prevProcess = row.processStatus;
@@ -491,6 +586,10 @@ router.patch("/:id", requirePermission("stock.write"), validateBody(stockUpdateS
         row.quantity = Math.max(0, Math.round(qtyRaw));
       }
       if (unit !== undefined) row.unit = String(unit).trim().slice(0, 24) || "adet";
+      if (trackingCode !== undefined) {
+        const code = String(trackingCode ?? "").trim();
+        row.trackingCode = code ? code.slice(0, 120) : null;
+      }
       if (processStatus !== undefined) {
         if (processValues.includes(processStatus as StockProcessStatus)) {
           row.processStatus = processStatus as StockProcessStatus;
@@ -532,12 +631,13 @@ router.patch("/:id", requirePermission("stock.write"), validateBody(stockUpdateS
       }
 
       await row.save({ transaction });
+      const after = snapshotStock(row);
       await recordStockMovement(
         {
-          type: "manual_update",
+          type: movementTypeForUpdate(before, after),
           actorUserId: req.sessionUser?.id,
           before,
-          after: snapshotStock(row),
+          after,
           referenceType: "stock_item",
           referenceId: row.id,
         },
@@ -549,7 +649,7 @@ router.patch("/:id", requirePermission("stock.write"), validateBody(stockUpdateS
           action: "stock.update",
           entityType: "stock_item",
           entityId: row.id,
-          metadata: { before, after: snapshotStock(row) },
+          metadata: { before, after },
         },
         transaction
       );
@@ -575,6 +675,12 @@ router.patch("/:id", requirePermission("stock.write"), validateBody(stockUpdateS
       res.status(400).json({ error: "Sevk hedefi (nereye) girilmeli" });
       return;
     }
+    if (e instanceof Error && e.message === "SHIPPED_LOCKED") {
+      res.status(409).json({
+        error: "Sevk edilmiş stok yalnızca sevk ekranından veya admin override ile değiştirilebilir",
+      });
+      return;
+    }
     console.error(e);
     res.status(409).json({ error: "Güncellenemedi (benzersizlik veya veri hatası)" });
   }
@@ -595,6 +701,7 @@ router.delete("/:id", requirePermission("stock.write"), async (req: AuthRequest,
       if (!row) {
         throw new Error("NOT_FOUND");
       }
+      ensureShippedStockEditable(row, req);
       const before = snapshotStock(row);
       await recordStockMovement(
         {
@@ -625,6 +732,12 @@ router.delete("/:id", requirePermission("stock.write"), async (req: AuthRequest,
   } catch (e) {
     if (e instanceof Error && e.message === "NOT_FOUND") {
       res.status(404).json({ error: "Kayıt bulunamadı" });
+      return;
+    }
+    if (e instanceof Error && e.message === "SHIPPED_LOCKED") {
+      res.status(409).json({
+        error: "Sevk edilmiş stok yalnızca admin tarafından silinebilir",
+      });
       return;
     }
     console.error(e);

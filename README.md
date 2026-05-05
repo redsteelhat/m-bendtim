@@ -164,6 +164,20 @@ Kullanıcılar sadece yöneticiler tarafından oluşturulur. Public signup yoktu
 - `operator`: mal kabul, stok, makina atama/durum, sevk ve rapor işlemleri; kullanıcı yönetimi yok.
 - `viewer`: salt okunur erişim; dashboard, stok, makina, mal kabul, sevk ve raporları görebilir, veri değiştiremez.
 
+## Stok Güvenilirliği
+
+Stok satırları tek firma içi üretim takibi için satır bazlı tutulur. Aynı malzeme kodu (`sku`) aynı makinaya birden fazla kez atanabilir; `sku + machineId` benzersiz değildir.
+
+Veritabanı migration'ları şu kontrolleri uygular:
+
+- Stok miktarı negatif olamaz.
+- Sevk edilmiş stokta `shippedAt` dolu olmalıdır.
+- İşlem durumu `tamamlandi` olmayan stok sevk edilmiş olarak kalamaz.
+
+Stok hareketleri `stock_movements` tablosunda tutulur. Stok detay ekranındaki `Hareket Geçmişi` bölümünde mal kabul, manuel güncelleme, toplu güncelleme, makina ataması, durum değişikliği, sevk ve sevk geri alma kayıtları izlenebilir.
+
+Operatörler sevk edilmiş stokları normal stok ekranından serbestçe düzenleyemez veya silemez. Sevk geri alma/hedef güncelleme işlemleri sevk ekranı akışından yapılır; admin gerektiğinde override yapabilir.
+
 ## Yerel Geliştirme
 
 Backend:
