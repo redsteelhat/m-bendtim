@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { useAuth } from "./auth/AuthContext";
 import { Layout } from "./components/Layout";
+import { LandingPage } from "./pages/LandingPage";
 import { LoginPage } from "./pages/LoginPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { UsersPage } from "./pages/UsersPage";
@@ -26,16 +27,16 @@ function Protected({ children }: { children: React.ReactNode }) {
 export default function App() {
   return (
     <Routes>
+      <Route path="/" element={<LandingPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route
-        path="/"
         element={
           <Protected>
             <Layout />
           </Protected>
         }
       >
-        <Route index element={<DashboardPage />} />
+        <Route path="dashboard" element={<DashboardPage />} />
         <Route path="mal-kabul" element={<MalKabulPage />} />
         <Route path="stok" element={<StokPage />} />
         <Route path="sevk" element={<SevkPage />} />

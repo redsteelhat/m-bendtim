@@ -13,7 +13,7 @@ export function Layout() {
           M-BEND T.İ.M
         </div>
         <nav className={styles.nav}>
-          <NavLink end className={styles.navLink} to="/">
+          <NavLink end className={styles.navLink} to="/dashboard">
             Özet
           </NavLink>
           <NavLink className={styles.navLink} to="/mal-kabul">

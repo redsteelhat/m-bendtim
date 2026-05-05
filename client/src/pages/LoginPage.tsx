@@ -17,7 +17,7 @@ export function LoginPage() {
       </div>
     );
   }
-  if (user) return <Navigate to="/" replace />;
+  if (user) return <Navigate to="/dashboard" replace />;
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
