@@ -28,6 +28,85 @@
   color: #f87171;
 }
 
+.badgeIptal {
+  display: inline-block;
+  padding: 0.25rem 0.6rem;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  background: rgba(248, 113, 113, 0.16);
+  color: #fca5a5;
+}
+
+.createPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  margin-bottom: 1.25rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.createFields {
+  display: grid;
+  grid-template-columns: minmax(14rem, 1.3fr) minmax(10rem, 0.7fr) minmax(12rem, 1fr);
+  gap: 0.8rem;
+}
+
+.createFooter {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.8rem;
+  color: var(--muted);
+}
+
+.section {
+  margin-top: 1.35rem;
+}
+
+.sectionTitle {
+  margin: 0 0 0.75rem;
+  font-size: 1rem;
+  color: var(--text);
+}
+
+.searchInput {
+  max-width: 28rem;
+  margin-bottom: 0.75rem;
+}
+
+.detailGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: 0.8rem;
+  margin-bottom: 1.25rem;
+}
+
+.detailGrid div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.detailGrid span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.detailGrid strong {
+  color: var(--text);
+  font-size: 0.95rem;
+}
+
 .checkCol {
   width: 2.5rem;
   vertical-align: middle;
@@ -103,4 +182,10 @@
   margin: 0.5rem 0 0;
   font-size: 0.8rem;
   color: var(--muted);
+}
+
+@media (max-width: 760px) {
+  .createFields {
+    grid-template-columns: 1fr;
+  }
 }

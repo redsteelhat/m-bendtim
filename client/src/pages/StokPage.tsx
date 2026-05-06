@@ -3,6 +3,9 @@ import { api } from "../api";
 import { useAuth } from "../auth/AuthContext";
 import type { Machine, StockItem, StockMovement, StockMovementType, StockProcessStatus } from "../types";
 import { formatQtyInteger } from "../formatQty";
+import { ConfirmDialog } from "../components/ui/ConfirmDialog";
+import { EmptyState, LoadingState } from "../components/ui/Feedback";
+import { useToast } from "../components/ui/Toast";
 import dStyles from "./dataPage.module.css";
 import pStyles from "./StokPage.module.css";
 
@@ -53,6 +56,7 @@ function badgeClass(s: StockProcessStatus): string {
 
 export function StokPage() {
   const { hasPermission } = useAuth();
+  const { showToast } = useToast();
   const canWrite = hasPermission("stock.write");
   const [rows, setRows] = useState<StockItem[]>([]);
   const [machines, setMachines] = useState<Machine[]>([]);
@@ -67,10 +71,46 @@ export function StokPage() {
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkError, setBulkError] = useState<string | null>(null);
   const [detailRow, setDetailRow] = useState<StockItem | null>(null);
+  const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | StockProcessStatus>("all");
+  const [machineFilter, setMachineFilter] = useState("all");
+  const [shipmentFilter, setShipmentFilter] = useState<"all" | "shipped" | "waiting">("all");
+  const [page, setPage] = useState(1);
+  const [confirmAction, setConfirmAction] = useState<{
+    title: string;
+    message: string;
+    confirmLabel: string;
+    danger?: boolean;
+    run: () => Promise<void>;
+  } | null>(null);
+
+  const pageSize = 12;
+
+  const filteredRows = useMemo(() => {
+    const normalizedQuery = query.trim().toLocaleLowerCase("tr-TR");
+    return rows.filter((row) => {
+      const matchesQuery =
+        normalizedQuery.length === 0 ||
+        row.sku.toLocaleLowerCase("tr-TR").includes(normalizedQuery) ||
+        row.name.toLocaleLowerCase("tr-TR").includes(normalizedQuery);
+      const matchesStatus = statusFilter === "all" || row.processStatus === statusFilter;
+      const matchesMachine =
+        machineFilter === "all" ||
+        (machineFilter === "none" ? row.machineId == null : row.machineId === Number(machineFilter));
+      const matchesShipment =
+        shipmentFilter === "all" ||
+        (shipmentFilter === "shipped" ? row.isShipped : !row.isShipped);
+      return matchesQuery && matchesStatus && matchesMachine && matchesShipment;
+    });
+  }, [machineFilter, query, rows, shipmentFilter, statusFilter]);
+
+  const pageCount = Math.max(1, Math.ceil(filteredRows.length / pageSize));
+  const pagedRows = filteredRows.slice((page - 1) * pageSize, page * pageSize);
 
   const selectedCount = selectedIds.size;
-  const allIds = useMemo(() => rows.map((r) => r.id), [rows]);
-  const allSelected = rows.length > 0 && selectedCount === rows.length;
+  const visibleIds = useMemo(() => pagedRows.map((r) => r.id), [pagedRows]);
+  const visibleSelectedCount = visibleIds.filter((id) => selectedIds.has(id)).length;
+  const allSelected = visibleIds.length > 0 && visibleSelectedCount === visibleIds.length;
   const someSelected = selectedCount > 0 && !allSelected;
 
   function toggleRow(id: number) {
@@ -83,8 +123,12 @@ export function StokPage() {
   }
 
   function toggleSelectAll() {
-    if (allSelected) setSelectedIds(new Set());
-    else setSelectedIds(new Set(allIds));
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (allSelected) visibleIds.forEach((id) => next.delete(id));
+      else visibleIds.forEach((id) => next.add(id));
+      return next;
+    });
   }
 
   async function applyBulkMachine() {
@@ -101,8 +145,11 @@ export function StokPage() {
       });
       setSelectedIds(new Set());
       await load();
+      showToast("Makina ataması güncellendi.", "success");
     } catch (e) {
-      setBulkError(e instanceof Error ? e.message : "Makina atanamadı");
+      const message = e instanceof Error ? e.message : "Makina atanamadı";
+      setBulkError(message);
+      showToast(message, "error");
     } finally {
       setBulkBusy(false);
     }
@@ -122,8 +169,11 @@ export function StokPage() {
       });
       setSelectedIds(new Set());
       await load();
+      showToast("Durum güncellendi.", "success");
     } catch (e) {
-      setBulkError(e instanceof Error ? e.message : "Durum güncellenemedi");
+      const message = e instanceof Error ? e.message : "Durum güncellenemedi";
+      setBulkError(message);
+      showToast(message, "error");
     } finally {
       setBulkBusy(false);
     }
@@ -149,6 +199,27 @@ export function StokPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [machineFilter, query, shipmentFilter, statusFilter]);
+
+  async function deleteStock(row: StockItem) {
+    try {
+      await api(`/api/stock/${row.id}`, { method: "DELETE" });
+      await load();
+      showToast("Stok kaydı silindi.", "success");
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : "Silinemedi", "error");
+    }
+  }
+
+  async function runConfirmedAction() {
+    if (!confirmAction) return;
+    const action = confirmAction;
+    setConfirmAction(null);
+    await action.run();
+  }
 
   useEffect(() => {
     setSelectedIds((prev) => {
@@ -181,6 +252,70 @@ export function StokPage() {
         )}
       </p>
       {loadError && <p className={dStyles.banner}>{loadError}</p>}
+      <div className={pStyles.filterBar} role="region" aria-label="Stok filtreleri">
+        <label className={pStyles.filterField}>
+          <span>Arama</span>
+          <input
+            className={dStyles.input}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Malzeme kodu veya ürün adı"
+          />
+        </label>
+        <label className={pStyles.filterField}>
+          <span>Durum</span>
+          <select
+            className={dStyles.input}
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as "all" | StockProcessStatus)}
+          >
+            <option value="all">Tümü</option>
+            <option value="bekliyor">Bekliyor</option>
+            <option value="isleniyor">İşleniyor</option>
+            <option value="tamamlandi">Tamamlandı</option>
+          </select>
+        </label>
+        <label className={pStyles.filterField}>
+          <span>Makina</span>
+          <select
+            className={dStyles.input}
+            value={machineFilter}
+            onChange={(e) => setMachineFilter(e.target.value)}
+          >
+            <option value="all">Tümü</option>
+            <option value="none">Makina yok</option>
+            {machines.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.code} — {m.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className={pStyles.filterField}>
+          <span>Sevk</span>
+          <select
+            className={dStyles.input}
+            value={shipmentFilter}
+            onChange={(e) => setShipmentFilter(e.target.value as "all" | "shipped" | "waiting")}
+          >
+            <option value="all">Tümü</option>
+            <option value="waiting">Sevk Bekliyor</option>
+            <option value="shipped">Sevk Edildi</option>
+          </select>
+        </label>
+        <button
+          type="button"
+          className={dStyles.linkBtn}
+          onClick={() => {
+            setQuery("");
+            setStatusFilter("all");
+            setMachineFilter("all");
+            setShipmentFilter("all");
+          }}
+        >
+          Filtreleri temizle
+        </button>
+      </div>
       {canWrite && selectedCount > 0 && (
         <div className={pStyles.bulkBar} role="region" aria-label="Toplu işlemler">
           <div className={pStyles.bulkBarTop}>
@@ -217,7 +352,14 @@ export function StokPage() {
             <button
               type="button"
               className={dStyles.primary}
-              onClick={() => void applyBulkMachine()}
+              onClick={() =>
+                setConfirmAction({
+                  title: "Toplu makina ataması",
+                  message: `${selectedCount} stok kalemi için makina ataması güncellenecek.`,
+                  confirmLabel: "Atamayı yap",
+                  run: applyBulkMachine,
+                })
+              }
               disabled={bulkBusy}
             >
               {bulkBusy ? "…" : "Makineye ata"}
@@ -238,7 +380,14 @@ export function StokPage() {
             <button
               type="button"
               className={dStyles.primary}
-              onClick={() => void applyBulkStatus()}
+              onClick={() =>
+                setConfirmAction({
+                  title: "Toplu durum güncelleme",
+                  message: `${selectedCount} stok kaleminin işlem durumu "${statusLabel[bulkStatus]}" yapılacak.`,
+                  confirmLabel: "Durumu güncelle",
+                  run: applyBulkStatus,
+                })
+              }
               disabled={bulkBusy}
             >
               {bulkBusy ? "…" : "Durumu güncelle"}
@@ -247,8 +396,11 @@ export function StokPage() {
         </div>
       )}
       {loading ? (
-        <p className="muted">Yükleniyor…</p>
+        <LoadingState />
+      ) : filteredRows.length === 0 ? (
+        <EmptyState title="Stok bulunamadı" text="Bu filtrelerle stok kaydı bulunamadı." />
       ) : (
+        <>
         <div className={dStyles.tableWrap}>
           <table className={dStyles.table}>
             <thead>
@@ -277,7 +429,7 @@ export function StokPage() {
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => (
+              {pagedRows.map((r) => (
                 <tr key={r.id} className={rowClass(r.processStatus ?? "bekliyor")}>
                   {canWrite && (
                     <td className={pStyles.checkCol}>
@@ -333,15 +485,15 @@ export function StokPage() {
                         type="button"
                         className={dStyles.dangerBtn}
                         disabled={r.isShipped}
-                        onClick={async () => {
-                          if (!confirm(`Malzeme kodu «${r.sku}» silinsin mi?`)) return;
-                          try {
-                            await api(`/api/stock/${r.id}`, { method: "DELETE" });
-                            await load();
-                          } catch (e) {
-                            alert(e instanceof Error ? e.message : "Silinemedi");
-                          }
-                        }}
+                        onClick={() =>
+                          setConfirmAction({
+                            title: "Stok kaydı silinsin mi?",
+                            message: `${r.sku} kodlu stok kaydı silinecek. Bu işlem geri alınamaz.`,
+                            confirmLabel: "Sil",
+                            danger: true,
+                            run: () => deleteStock(r),
+                          })
+                        }
                       >
                         Sil
                       </button>
@@ -353,6 +505,31 @@ export function StokPage() {
             </tbody>
           </table>
         </div>
+        <div className={pStyles.pagination}>
+          <span>
+            {filteredRows.length} kalem içinde {(page - 1) * pageSize + 1}-
+            {Math.min(page * pageSize, filteredRows.length)} gösteriliyor
+          </span>
+          <div>
+            <button
+              type="button"
+              className={dStyles.linkBtn}
+              disabled={page === 1}
+              onClick={() => setPage((current) => Math.max(1, current - 1))}
+            >
+              Önceki
+            </button>
+            <button
+              type="button"
+              className={dStyles.linkBtn}
+              disabled={page === pageCount}
+              onClick={() => setPage((current) => Math.min(pageCount, current + 1))}
+            >
+              Sonraki
+            </button>
+          </div>
+        </div>
+        </>
       )}
       {modalOpen && editing && canWrite && (
         <StockModal
@@ -364,10 +541,22 @@ export function StokPage() {
           onSaved={async () => {
             setModalOpen(false);
             await load();
+            showToast("Stok bilgisi güncellendi.", "success");
           }}
         />
       )}
       {detailRow && <StockDetailDrawer row={detailRow} onClose={() => setDetailRow(null)} />}
+      {confirmAction && (
+        <ConfirmDialog
+          title={confirmAction.title}
+          message={confirmAction.message}
+          confirmLabel={confirmAction.confirmLabel}
+          danger={confirmAction.danger}
+          busy={bulkBusy}
+          onCancel={() => setConfirmAction(null)}
+          onConfirm={() => void runConfirmedAction()}
+        />
+      )}
     </div>
   );
 }

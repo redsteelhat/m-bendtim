@@ -21,6 +21,7 @@ export async function incrementStockForMalKabul(
     sku: string;
     name: string;
     qty: number;
+    unit?: string;
     machineId: number | null;
     actorUserId?: number | null;
     referenceId?: string | number | null;
@@ -29,6 +30,7 @@ export async function incrementStockForMalKabul(
 ): Promise<void> {
   const sku = params.sku.trim();
   const name = params.name.trim();
+  const unit = params.unit?.trim() || "adet";
   const { machineId } = params;
   const units = wholeUnits(params.qty);
   if (units < 1) {
@@ -41,7 +43,7 @@ export async function incrementStockForMalKabul(
         sku,
         name,
         quantity: 1,
-        unit: "adet",
+        unit,
         machineId,
         goodsReceiptLineId:
           params.referenceId == null || Number.isNaN(Number(params.referenceId))

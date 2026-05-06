@@ -87,11 +87,92 @@
   margin-top: 0.5rem;
 }
 
+.importModal {
+  max-width: min(980px, calc(100vw - 2rem));
+  overflow: auto;
+}
+
+.uploadBox {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 5.5rem;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.uploadBox input {
+  display: none;
+}
+
+.previewHeader {
+  display: grid;
+  grid-template-columns: minmax(12rem, 1fr) minmax(10rem, 0.7fr) minmax(8rem, 0.45fr);
+  gap: 0.75rem;
+  align-items: end;
+}
+
+.previewStat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+}
+
+.previewStat span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.previewStat strong {
+  color: var(--text);
+}
+
+.warningBox {
+  padding: 0.7rem 0.85rem;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  border-radius: 8px;
+  background: rgba(245, 158, 11, 0.1);
+  color: #fbbf24;
+}
+
+.warningBox p {
+  margin: 0.2rem 0;
+}
+
+.previewTableWrap {
+  max-height: 24rem;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.previewTableWrap table {
+  min-width: 860px;
+}
+
+.previewTableWrap input {
+  width: 100%;
+  min-width: 0;
+}
+
 .filterBar {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 0.5rem;
   margin: 0 0 1rem;
+}
+
+.filterBar input {
+  flex: 1 1 18rem;
 }
 
 .filterButton,
@@ -127,4 +208,30 @@
 .cancelledBadge {
   color: #fca5a5;
   background: rgba(248, 113, 113, 0.14);
+}
+
+.pagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 0.8rem;
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.pagination div {
+  display: flex;
+  gap: 0.5rem;
+}
+
+@media (max-width: 620px) {
+  .previewHeader {
+    grid-template-columns: 1fr;
+  }
+
+  .pagination {
+    align-items: flex-start;
+    flex-direction: column;
+  }
 }

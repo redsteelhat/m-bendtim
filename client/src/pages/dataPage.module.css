@@ -44,10 +44,13 @@
   border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--surface);
+  max-width: 100%;
+  -webkit-overflow-scrolling: touch;
 }
 
 .table {
   width: 100%;
+  min-width: 760px;
   border-collapse: collapse;
   font-size: 0.95rem;
 }
@@ -57,6 +60,7 @@
   padding: 0.75rem 1rem;
   text-align: left;
   border-bottom: 1px solid var(--border);
+  white-space: nowrap;
 }
 
 .table th {
@@ -80,8 +84,9 @@
 .actions {
   display: flex;
   gap: 0.5rem;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   justify-content: flex-end;
+  white-space: nowrap;
 }
 
 .linkBtn {
@@ -192,4 +197,25 @@ textarea.input {
 
 .ghost:hover {
   color: var(--text);
+}
+
+@media (max-width: 720px) {
+  .head {
+    align-items: flex-start;
+    margin-bottom: 1rem;
+  }
+
+  .h1 {
+    font-size: 1.35rem;
+  }
+
+  .table {
+    min-width: 900px;
+    font-size: 0.88rem;
+  }
+
+  .table th,
+  .table td {
+    padding: 0.65rem 0.75rem;
+  }
 }

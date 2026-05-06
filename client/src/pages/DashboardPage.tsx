@@ -77,19 +77,11 @@ export function DashboardPage() {
           <Link to="/stok" className={`${styles.card} ${styles.statCard} ${styles.cardStok}`}>
             <div className={styles.statCardTitle}>Stok</div>
             <p className={styles.statMain}>{summary.stock.total}</p>
-            <p className={styles.statLabel}>toplam satır</p>
+            <p className={styles.statLabel}>toplam kalem</p>
             <ul className={styles.statBreakdown}>
               <li>
-                <span>Bekliyor</span>
-                <strong>{summary.stock.bekliyor}</strong>
-              </li>
-              <li>
-                <span>İşleniyor</span>
-                <strong>{summary.stock.isleniyor}</strong>
-              </li>
-              <li>
-                <span>Tamamlandı</span>
-                <strong>{summary.stock.tamamlandi}</strong>
+                <span>Toplam adet</span>
+                <strong>{formatQtyInteger(summary.stock.totalQuantity)}</strong>
               </li>
             </ul>
           </Link>
@@ -98,12 +90,12 @@ export function DashboardPage() {
             <div className={styles.statCardTitle}>Sevk</div>
             <ul className={styles.sevkPair}>
               <li>
-                <p className={styles.statMain}>{summary.sevk.bekleyen}</p>
-                <p className={styles.statLabel}>sevk bekleyen</p>
+                <p className={styles.statMain}>{summary.sevk.edildi}</p>
+                <p className={styles.statLabel}>sevk edilen kalem</p>
               </li>
               <li>
-                <p className={styles.statMain}>{summary.sevk.edildi}</p>
-                <p className={styles.statLabel}>sevk edildi</p>
+                <p className={styles.statMain}>{formatQtyInteger(summary.sevk.edildiQuantity)}</p>
+                <p className={styles.statLabel}>sevk edilen adet</p>
               </li>
             </ul>
           </Link>

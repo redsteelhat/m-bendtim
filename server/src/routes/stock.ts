@@ -73,12 +73,6 @@ const bulkStockSchema = z
     "Makina veya durum belirtilmeli"
   );
 
-const bulkShipmentSchema = z.object({
-  ids: idList,
-  action: z.enum(["ship", "unship", "destination"]),
-  shipDestination: nullableTrimmedString("Sevk hedefi", 200),
-});
-
 const stockUpdateSchema = z
   .object({
     sku: optionalTrimmedString("Malzeme kodu", 80),
@@ -387,120 +381,10 @@ router.patch("/bulk", requirePermission("stock.write"), validateBody(bulkStockSc
 });
 
 /** Sevk ekranı: toplu sevk işareti / hedef (yalnızca tamamlanmış stok). */
-router.patch("/bulk-sevk", requirePermission("shipments.write"), validateBody(bulkShipmentSchema), async (req: AuthRequest, res: Response) => {
-  const { ids, action, shipDestination } = req.body as {
-    ids?: unknown;
-    action?: string;
-    shipDestination?: string | null;
-  };
-  if (!Array.isArray(ids) || ids.length === 0) {
-    res.status(400).json({ error: "En az bir kayıt seçilmeli" });
-    return;
-  }
-  const idNums = ids.map((x) => Number(x));
-  if (idNums.some((n) => !Number.isInteger(n) || n < 1)) {
-    res.status(400).json({ error: "Geçersiz id listesi" });
-    return;
-  }
-  if (action !== "ship" && action !== "unship" && action !== "destination") {
-    res.status(400).json({ error: "Geçersiz işlem (ship | unship | destination)" });
-    return;
-  }
-
-  try {
-    await sequelize.transaction(async (transaction) => {
-      for (const id of idNums) {
-        const row = await StockItem.findByPk(id, {
-          transaction,
-          lock: transaction.LOCK.UPDATE,
-        });
-        if (!row) {
-          throw new Error("NOT_FOUND");
-        }
-        if (row.processStatus !== "tamamlandi") {
-          throw new Error("NOT_COMPLETED");
-        }
-        const before = snapshotStock(row);
-
-        if (action === "unship") {
-          row.isShipped = false;
-          row.shippedAt = null;
-          row.shipDestination = null;
-        } else if (action === "ship") {
-          const dest =
-            shipDestination != null ? String(shipDestination).trim() : "";
-          if (!dest) {
-            throw new Error("BAD_SHIP_DEST");
-          }
-          row.isShipped = true;
-          row.shipDestination = dest.slice(0, 200);
-          row.shippedAt = dateOnlyLocal() as unknown as Date;
-        } else {
-          if (!row.isShipped) {
-            throw new Error("NEED_SHIPPED");
-          }
-          const dest =
-            shipDestination != null ? String(shipDestination).trim() : "";
-          if (!dest) {
-            throw new Error("BAD_SHIP_DEST");
-          }
-          row.shipDestination = dest.slice(0, 200);
-        }
-
-        await row.save({ transaction });
-        await recordStockMovement(
-          {
-            type:
-              action === "ship"
-                ? "ship"
-                : action === "unship"
-                  ? "unship"
-                  : "ship_destination",
-            actorUserId: req.sessionUser?.id,
-            before,
-            after: snapshotStock(row),
-            referenceType: "stock_bulk_sevk",
-            referenceId: id,
-          },
-          transaction
-        );
-      }
-      await recordAudit(
-        {
-          actorUserId: req.sessionUser?.id,
-          action: `stock.${action}`,
-          entityType: "stock_item",
-          entityId: null,
-          metadata: { ids: idNums, shipDestination },
-        },
-        transaction
-      );
-    });
-    res.status(204).send();
-  } catch (e) {
-    if (e instanceof Error && e.message === "NOT_FOUND") {
-      res.status(404).json({ error: "Seçilen kayıtlardan biri bulunamadı" });
-      return;
-    }
-    if (e instanceof Error && e.message === "NOT_COMPLETED") {
-      res.status(400).json({
-        error: "Yalnızca işlem durumu «Tamamlandı» olan satırlar sevk listesinde güncellenir",
-      });
-      return;
-    }
-    if (e instanceof Error && e.message === "BAD_SHIP_DEST") {
-      res.status(400).json({ error: "Sevk hedefi (nereye) girilmeli" });
-      return;
-    }
-    if (e instanceof Error && e.message === "NEED_SHIPPED") {
-      res.status(400).json({
-        error: "Nereye güncellemesi için seçilen satırların hepsi sevk edilmiş olmalı",
-      });
-      return;
-    }
-    console.error(e);
-    res.status(409).json({ error: "Toplu sevk güncellemesi başarısız" });
-  }
+router.patch("/bulk-sevk", requirePermission("shipments.write"), async (_req: AuthRequest, res: Response) => {
+  res.status(410).json({
+    error: "Sevk işlemleri artık belge bazlıdır. POST /api/shipments kullanın",
+  });
 });
 
 router.patch("/:id", requirePermission("stock.write"), validateBody(stockUpdateSchema), async (req: AuthRequest, res: Response) => {
@@ -538,6 +422,12 @@ router.patch("/:id", requirePermission("stock.write"), validateBody(stockUpdateS
   const newName = newMachine?.name?.trim();
   if ((newCode && !newName) || (!newCode && newName)) {
     res.status(400).json({ error: "Yeni makina için kod ve ad birlikte girilmeli" });
+    return;
+  }
+  if (isShipped !== undefined || shipDestination !== undefined) {
+    res.status(410).json({
+      error: "Sevk durumu stoktan doğrudan değiştirilemez. Sevk belgesi akışını kullanın",
+    });
     return;
   }
 

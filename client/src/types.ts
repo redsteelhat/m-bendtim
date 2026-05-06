@@ -120,6 +120,24 @@ export interface MalKabulBatchResponse {
   lines: MalKabulLine[];
 }
 
+export interface ParsedIrsaliyeLine {
+  rowNo: number;
+  sku: string;
+  name: string;
+  quantity: number;
+  unit: string;
+}
+
+export interface ParsedIrsaliye {
+  documentNo: string;
+  documentDate: string;
+  lineCount: number;
+  lines: ParsedIrsaliyeLine[];
+  warnings: string[];
+  sourceFileName?: string;
+  sourceFileSha256?: string;
+}
+
 /** GET /api/reports/range — tüm mal kabul ve sevk edilmiş stok özeti */
 export interface ReportMalzemeOzet {
   toplamMiktar: number;
@@ -140,6 +158,8 @@ export interface ReportOzetResponse {
   malKabul: MalKabulLine[];
   malKabulMalzemeOzeti: ReportMalKabulMalzemeOzet[];
   sevkEdilen: Array<{
+    shipmentId?: number | null;
+    shipmentNo?: string | null;
     id: number;
     sku: string;
     name: string;
@@ -161,13 +181,11 @@ export interface ReportOzetResponse {
 export interface DashboardSummary {
   stock: {
     total: number;
-    bekliyor: number;
-    isleniyor: number;
-    tamamlandi: number;
+    totalQuantity: number;
   };
   sevk: {
-    bekleyen: number;
     edildi: number;
+    edildiQuantity: number;
   };
   machines: { total: number };
   recentMalKabul: Array<{
@@ -182,15 +200,31 @@ export interface DashboardSummary {
   }>;
 }
 
-export type ShipmentStatus = "hazirlik" | "yolda" | "teslim" | "iptal";
+export type ShipmentStatus = "hazirlik" | "sevk_edildi" | "iptal";
+
+export interface ShipmentItem {
+  id: number;
+  shipmentId: number;
+  stockItemId: number;
+  stockItem?: StockItem | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
 
 export interface Shipment {
   id: number;
-  documentNo: string;
+  shipmentNo: string;
   shippedAt: string;
   destination: string;
   notes: string | null;
   status: ShipmentStatus;
+  createdByUserId?: number | null;
+  cancelledAt?: string | null;
+  cancelledByUserId?: number | null;
+  cancelReason?: string | null;
+  createdByUser?: Pick<User, "id" | "name" | "email" | "role"> | null;
+  cancelledByUser?: Pick<User, "id" | "name" | "email" | "role"> | null;
+  items?: ShipmentItem[];
   createdAt?: string;
   updatedAt?: string;
 }

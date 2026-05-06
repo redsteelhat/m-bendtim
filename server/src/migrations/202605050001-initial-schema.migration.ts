@@ -10,9 +10,6 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'enum_stock_items_processStatus') THEN
     CREATE TYPE "enum_stock_items_processStatus" AS ENUM ('bekliyor', 'isleniyor', 'tamamlandi');
   END IF;
-  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'enum_shipments_status') THEN
-    CREATE TYPE "enum_shipments_status" AS ENUM ('hazirlik', 'yolda', 'teslim', 'iptal');
-  END IF;
 END $$;
   `);
 
@@ -90,24 +87,52 @@ CREATE TABLE IF NOT EXISTS "stock_items" (
   await context.sequelize.query(`
 CREATE TABLE IF NOT EXISTS "shipments" (
   "id" SERIAL PRIMARY KEY,
-  "documentNo" VARCHAR(64) NOT NULL UNIQUE,
+  "shipmentNo" VARCHAR(64) NOT NULL UNIQUE,
   "shippedAt" DATE NOT NULL,
   "destination" VARCHAR(240) NOT NULL,
   "notes" TEXT NULL,
-  "status" "enum_shipments_status" NOT NULL DEFAULT 'hazirlik',
+  "status" VARCHAR(32) NOT NULL DEFAULT 'sevk_edildi',
+  "createdByUserId" INTEGER NULL REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE,
+  "cancelledAt" TIMESTAMPTZ NULL,
+  "cancelledByUserId" INTEGER NULL REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE,
+  "cancelReason" VARCHAR(500) NULL,
   "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT "shipments_status_allowed" CHECK ("status" IN ('hazirlik', 'sevk_edildi', 'iptal')),
+  CONSTRAINT "shipments_shipped_date_required" CHECK ("status" <> 'sevk_edildi' OR "shippedAt" IS NOT NULL),
+  CONSTRAINT "shipments_cancel_fields_consistent" CHECK (
+    "status" <> 'iptal'
+    OR ("cancelledAt" IS NOT NULL AND "cancelReason" IS NOT NULL AND length(trim("cancelReason")) > 0)
+  )
 );
   `);
+
+  await context.sequelize.query(`
+CREATE TABLE IF NOT EXISTS "shipment_items" (
+  "id" SERIAL PRIMARY KEY,
+  "shipmentId" INTEGER NOT NULL REFERENCES "shipments"("id") ON DELETE CASCADE ON UPDATE CASCADE,
+  "stockItemId" INTEGER NOT NULL REFERENCES "stock_items"("id") ON DELETE RESTRICT ON UPDATE CASCADE,
+  "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT "shipment_items_shipment_stock_unique" UNIQUE ("shipmentId", "stockItemId")
+);
+  `);
+
+  await context.sequelize.query(
+    'CREATE INDEX IF NOT EXISTS "shipment_items_shipment_id_idx" ON "shipment_items" ("shipmentId");'
+  );
+  await context.sequelize.query(
+    'CREATE INDEX IF NOT EXISTS "shipment_items_stock_item_id_idx" ON "shipment_items" ("stockItemId");'
+  );
 }
 
 export async function down({ context }: { context: QueryInterface }): Promise<void> {
+  await context.sequelize.query('DROP TABLE IF EXISTS "shipment_items" CASCADE;');
   await context.sequelize.query('DROP TABLE IF EXISTS "shipments" CASCADE;');
   await context.sequelize.query('DROP TABLE IF EXISTS "stock_items" CASCADE;');
   await context.sequelize.query('DROP TABLE IF EXISTS "goods_receipt_lines" CASCADE;');
   await context.sequelize.query('DROP TABLE IF EXISTS "machines" CASCADE;');
   await context.sequelize.query('DROP TABLE IF EXISTS "users" CASCADE;');
-  await context.sequelize.query('DROP TYPE IF EXISTS "enum_shipments_status";');
   await context.sequelize.query('DROP TYPE IF EXISTS "enum_stock_items_processStatus";');
   await context.sequelize.query('DROP TYPE IF EXISTS "enum_users_role";');
 }

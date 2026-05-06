@@ -7,9 +7,10 @@ import { DashboardPage } from "./pages/DashboardPage";
 import { UsersPage } from "./pages/UsersPage";
 import { MalKabulPage } from "./pages/MalKabulPage";
 import { StokPage } from "./pages/StokPage";
-import { SevkPage } from "./pages/SevkPage";
+import { SevkDetailPage, SevkPage } from "./pages/SevkPage";
 import { MakinaPage } from "./pages/MakinaPage";
 import { RaporlarPage } from "./pages/RaporlarPage";
+import { ToastProvider } from "./components/ui/Toast";
 
 function Protected({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -26,25 +27,28 @@ function Protected({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   return (
-    <Routes>
-      <Route path="/" element={<LandingPage />} />
-      <Route path="/login" element={<LoginPage />} />
-      <Route
-        element={
-          <Protected>
-            <Layout />
-          </Protected>
-        }
-      >
-        <Route path="dashboard" element={<DashboardPage />} />
-        <Route path="mal-kabul" element={<MalKabulPage />} />
-        <Route path="stok" element={<StokPage />} />
-        <Route path="sevk" element={<SevkPage />} />
-        <Route path="raporlar" element={<RaporlarPage />} />
-        <Route path="makina" element={<MakinaPage />} />
-        <Route path="users" element={<UsersPage />} />
-      </Route>
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+    <ToastProvider>
+      <Routes>
+        <Route path="/" element={<LandingPage />} />
+        <Route path="/login" element={<LoginPage />} />
+        <Route
+          element={
+            <Protected>
+              <Layout />
+            </Protected>
+          }
+        >
+          <Route path="dashboard" element={<DashboardPage />} />
+          <Route path="mal-kabul" element={<MalKabulPage />} />
+          <Route path="stok" element={<StokPage />} />
+          <Route path="sevk" element={<SevkPage />} />
+          <Route path="sevk/:id" element={<SevkDetailPage />} />
+          <Route path="raporlar" element={<RaporlarPage />} />
+          <Route path="makina" element={<MakinaPage />} />
+          <Route path="users" element={<UsersPage />} />
+        </Route>
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </ToastProvider>
   );
 }

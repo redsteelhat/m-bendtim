@@ -1,9 +1,11 @@
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../api";
 import { useAuth } from "../auth/AuthContext";
-import type { MalKabulBatchResponse, MalKabulLine } from "../types";
+import type { MalKabulBatchResponse, MalKabulLine, ParsedIrsaliye, ParsedIrsaliyeLine } from "../types";
 import { formatQtyInteger } from "../formatQty";
 import { dateOnlyLocal } from "../dateOnlyLocal";
+import { EmptyState, LoadingState } from "../components/ui/Feedback";
+import { useToast } from "../components/ui/Toast";
 import styles from "./dataPage.module.css";
 import mkStyles from "./MalKabulPage.module.css";
 
@@ -21,14 +23,32 @@ type MalKabulFilter = "active" | "cancelled" | "all";
 
 export function MalKabulPage() {
   const { hasPermission } = useAuth();
+  const { showToast } = useToast();
   const canWrite = hasPermission("malKabul.write");
   const [rows, setRows] = useState<MalKabulLine[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
+  const [pdfImportOpen, setPdfImportOpen] = useState(false);
   const [cancelTarget, setCancelTarget] = useState<MalKabulLine | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [filter, setFilter] = useState<MalKabulFilter>("active");
+  const [query, setQuery] = useState("");
+  const [page, setPage] = useState(1);
+
+  const pageSize = 12;
+  const filteredRows = useMemo(() => {
+    const normalizedQuery = query.trim().toLocaleLowerCase("tr-TR");
+    if (!normalizedQuery) return rows;
+    return rows.filter((row) =>
+      [row.irsaliyeNo, row.materialCode, row.materialDescription ?? ""]
+        .join(" ")
+        .toLocaleLowerCase("tr-TR")
+        .includes(normalizedQuery)
+    );
+  }, [query, rows]);
+  const pageCount = Math.max(1, Math.ceil(filteredRows.length / pageSize));
+  const pagedRows = filteredRows.slice((page - 1) * pageSize, page * pageSize);
 
   const load = useCallback(async () => {
     setLoadError(null);
@@ -46,21 +66,34 @@ export function MalKabulPage() {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    setPage(1);
+  }, [filter, query]);
+
   return (
     <div>
       <div className={styles.head}>
         <h1 className={styles.h1}>Mal kabul</h1>
         {canWrite && (
-          <button
-            type="button"
-            className={styles.primary}
-            onClick={() => {
-              setFormError(null);
-              setModalOpen(true);
-            }}
-          >
-            Stok girişi
-          </button>
+          <div className={styles.actions}>
+            <button
+              type="button"
+              className={styles.ghost}
+              onClick={() => setPdfImportOpen(true)}
+            >
+              PDF’den Aktar
+            </button>
+            <button
+              type="button"
+              className={styles.primary}
+              onClick={() => {
+                setFormError(null);
+                setModalOpen(true);
+              }}
+            >
+              Stok girişi
+            </button>
+          </div>
         )}
       </div>
       {!canWrite && <p className="muted" style={{ margin: "0 0 1rem" }}>Salt okunur görünüm.</p>}
@@ -93,11 +126,20 @@ export function MalKabulPage() {
         >
           Tümü
         </button>
+        <input
+          className={styles.input}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="İrsaliye, malzeme kodu veya ürün adı ara"
+        />
       </div>
       {loadError && <p className={styles.banner}>{loadError}</p>}
       {loading ? (
-        <p className="muted">Yükleniyor…</p>
+        <LoadingState />
+      ) : filteredRows.length === 0 ? (
+        <EmptyState title="Mal kabul kaydı bulunamadı" text="Bu filtrelerle mal kabul kalemi bulunamadı." />
       ) : (
+        <>
         <div className={styles.tableWrap}>
           <table className={styles.table}>
             <thead>
@@ -112,7 +154,7 @@ export function MalKabulPage() {
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => (
+              {pagedRows.map((r) => (
                 <tr key={r.id}>
                   <td>{r.irsaliyeNo}</td>
                   <td>{toInputDate(r.irsaliyeTarihi)}</td>
@@ -147,6 +189,31 @@ export function MalKabulPage() {
             </tbody>
           </table>
         </div>
+        <div className={mkStyles.pagination}>
+          <span>
+            {filteredRows.length} kalem içinde {(page - 1) * pageSize + 1}-
+            {Math.min(page * pageSize, filteredRows.length)} gösteriliyor
+          </span>
+          <div>
+            <button
+              type="button"
+              className={styles.linkBtn}
+              disabled={page === 1}
+              onClick={() => setPage((current) => Math.max(1, current - 1))}
+            >
+              Önceki
+            </button>
+            <button
+              type="button"
+              className={styles.linkBtn}
+              disabled={page === pageCount}
+              onClick={() => setPage((current) => Math.min(pageCount, current + 1))}
+            >
+              Sonraki
+            </button>
+          </div>
+        </div>
+        </>
       )}
       {modalOpen && canWrite && (
         <MalKabulEntryModal
@@ -156,6 +223,17 @@ export function MalKabulPage() {
           onSaved={async () => {
             setModalOpen(false);
             await load();
+            showToast("Mal kabul kaydı stoğa işlendi.", "success");
+          }}
+        />
+      )}
+      {pdfImportOpen && canWrite && (
+        <PdfImportModal
+          onClose={() => setPdfImportOpen(false)}
+          onImported={async () => {
+            setPdfImportOpen(false);
+            await load();
+            showToast("PDF mal kabul kaydı stoğa işlendi.", "success");
           }}
         />
       )}
@@ -166,9 +244,278 @@ export function MalKabulPage() {
           onCancelled={async () => {
             setCancelTarget(null);
             await load();
+            showToast("Mal kabul kalemi iptal edildi.", "success");
           }}
         />
       )}
+    </div>
+  );
+}
+
+type DraftPdfLine = ParsedIrsaliyeLine & { key: string; quantityText: string };
+
+function PdfImportModal({
+  onClose,
+  onImported,
+}: {
+  onClose: () => void;
+  onImported: () => Promise<void>;
+}) {
+  const [parsed, setParsed] = useState<ParsedIrsaliye | null>(null);
+  const [documentNo, setDocumentNo] = useState("");
+  const [documentDate, setDocumentDate] = useState("");
+  const [lines, setLines] = useState<DraftPdfLine[]>([]);
+  const [fileName, setFileName] = useState<string | null>(null);
+  const [fileSha256, setFileSha256] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+
+  const validationError = useMemo(() => {
+    if (!documentNo.trim()) return "İrsaliye no gerekli";
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(documentDate)) return "İrsaliye tarihi geçerli olmalı";
+    if (lines.length === 0) return "En az bir satır gerekli";
+    for (const line of lines) {
+      if (!line.sku.trim()) return `${line.rowNo}. satırda malzeme kodu gerekli`;
+      if (!line.name.trim()) return `${line.rowNo}. satırda malzeme açıklaması gerekli`;
+      if (!Number.isFinite(Number(line.quantityText)) || Number(line.quantityText) <= 0) {
+        return `${line.rowNo}. satırda miktar sıfırdan büyük olmalı`;
+      }
+      if (!line.unit.trim()) return `${line.rowNo}. satırda birim gerekli`;
+    }
+    return null;
+  }, [documentDate, documentNo, lines]);
+
+  async function parseFile(file: File) {
+    setError(null);
+    if (file.type !== "application/pdf") {
+      setError("Sadece PDF dosyası yükleyebilirsiniz.");
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setError("PDF dosyası en fazla 10MB olabilir.");
+      return;
+    }
+    const formData = new FormData();
+    formData.append("file", file);
+    setBusy(true);
+    try {
+      const response = await api<{ data: ParsedIrsaliye }>("/api/mal-kabul/import/pdf/parse", {
+        method: "POST",
+        body: formData,
+      });
+      const data = response.data;
+      setParsed(data);
+      setDocumentNo(data.documentNo);
+      setDocumentDate(data.documentDate);
+      setFileName(data.sourceFileName ?? file.name);
+      setFileSha256(data.sourceFileSha256 ?? null);
+      setLines(
+        data.lines.map((line) => ({
+          ...line,
+          key: `${line.rowNo}-${line.sku}-${Math.random().toString(36).slice(2)}`,
+          quantityText: String(line.quantity),
+        }))
+      );
+    } catch (err) {
+      setParsed(null);
+      setLines([]);
+      setError(err instanceof Error ? err.message : "PDF okunamadı");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function updateLine(key: string, patch: Partial<DraftPdfLine>) {
+    setLines((current) => current.map((line) => (line.key === key ? { ...line, ...patch } : line)));
+  }
+
+  async function confirmImport() {
+    setError(null);
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+    setConfirming(true);
+    try {
+      await api("/api/mal-kabul/import/pdf/confirm", {
+        method: "POST",
+        body: JSON.stringify({
+          documentNo: documentNo.trim(),
+          documentDate,
+          sourceFileName: fileName,
+          sourceFileSha256: fileSha256,
+          warnings: parsed?.warnings ?? [],
+          lines: lines.map((line) => ({
+            rowNo: line.rowNo,
+            sku: line.sku.trim(),
+            name: line.name.trim(),
+            quantity: Number(line.quantityText),
+            unit: line.unit.trim(),
+          })),
+        }),
+      });
+      await onImported();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "PDF mal kabul kaydı oluşturulamadı");
+    } finally {
+      setConfirming(false);
+    }
+  }
+
+  return (
+    <div className={styles.overlay} role="presentation" onClick={onClose}>
+      <div
+        className={`${styles.modal} ${mkStyles.importModal}`}
+        role="dialog"
+        aria-modal
+        onClick={(ev) => ev.stopPropagation()}
+      >
+        <h2 className={styles.modalTitle}>PDF’den Mal Kabul Aktar</h2>
+        <div className={styles.modalForm}>
+          <label className={mkStyles.uploadBox}>
+            <span>{busy ? "PDF okunuyor..." : "E-irsaliye PDF seç"}</span>
+            <input
+              type="file"
+              accept="application/pdf"
+              disabled={busy || confirming}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) void parseFile(file);
+              }}
+            />
+          </label>
+
+          {error && (
+            <p className={styles.formErr}>
+              {error === "Bu irsaliye daha önce işlenmiş."
+                ? "Bu irsaliye daha önce işlenmiş."
+                : error}
+            </p>
+          )}
+
+          {parsed && (
+            <>
+              <div className={mkStyles.previewHeader}>
+                <label className={styles.field}>
+                  İrsaliye No
+                  <input
+                    className={styles.input}
+                    value={documentNo}
+                    onChange={(e) => setDocumentNo(e.target.value)}
+                  />
+                </label>
+                <label className={styles.field}>
+                  İrsaliye Tarihi
+                  <input
+                    className={styles.input}
+                    type="date"
+                    value={documentDate}
+                    onChange={(e) => setDocumentDate(e.target.value)}
+                  />
+                </label>
+                <div className={mkStyles.previewStat}>
+                  <span>Satır Sayısı</span>
+                  <strong>{lines.length}</strong>
+                </div>
+              </div>
+
+              {(parsed.warnings ?? []).length > 0 && (
+                <div className={mkStyles.warningBox}>
+                  {parsed.warnings.map((warning, index) => (
+                    <p key={`${warning}-${index}`}>{warning}</p>
+                  ))}
+                </div>
+              )}
+
+              <div className={mkStyles.previewTableWrap}>
+                <table className={styles.table}>
+                  <thead>
+                    <tr>
+                      <th>Sıra No</th>
+                      <th>Malzeme Kodu</th>
+                      <th>Malzeme Açıklaması</th>
+                      <th>Miktar</th>
+                      <th>Birim</th>
+                      <th />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {lines.map((line) => (
+                      <tr key={line.key}>
+                        <td>
+                          <input
+                            className={styles.input}
+                            type="number"
+                            min={1}
+                            value={line.rowNo}
+                            onChange={(e) => updateLine(line.key, { rowNo: Number(e.target.value) })}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            className={styles.input}
+                            value={line.sku}
+                            onChange={(e) => updateLine(line.key, { sku: e.target.value })}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            className={styles.input}
+                            value={line.name}
+                            onChange={(e) => updateLine(line.key, { name: e.target.value })}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            className={styles.input}
+                            type="number"
+                            min={0.001}
+                            step="0.001"
+                            value={line.quantityText}
+                            onChange={(e) => updateLine(line.key, { quantityText: e.target.value })}
+                          />
+                        </td>
+                        <td>
+                          <input
+                            className={styles.input}
+                            value={line.unit}
+                            onChange={(e) => updateLine(line.key, { unit: e.target.value })}
+                          />
+                        </td>
+                        <td className={styles.actions}>
+                          <button
+                            type="button"
+                            className={styles.dangerBtn}
+                            onClick={() => setLines((current) => current.filter((x) => x.key !== line.key))}
+                          >
+                            Sil
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+
+          <div className={styles.modalActions}>
+            <button type="button" className={styles.ghost} onClick={onClose} disabled={busy || confirming}>
+              Vazgeç
+            </button>
+            <button
+              type="button"
+              className={styles.primary}
+              disabled={!parsed || Boolean(validationError) || busy || confirming}
+              onClick={() => void confirmImport()}
+              title={validationError ?? undefined}
+            >
+              {confirming ? "Kaydediliyor..." : "Stok Girişini Onayla"}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

@@ -1,0 +1,32 @@
+.stack {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  width: min(22rem, calc(100vw - 2rem));
+}
+
+.toast {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.75rem 0.9rem;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
+  font-size: 0.92rem;
+}
+
+.success {
+  border-color: rgba(74, 222, 128, 0.5);
+}
+
+.error {
+  border-color: rgba(232, 93, 108, 0.6);
+}
+
+.info {
+  border-color: rgba(91, 141, 239, 0.5);
+}

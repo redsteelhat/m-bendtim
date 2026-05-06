@@ -1,4 +1,8 @@
 import { Router, Response } from "express";
+import crypto from "node:crypto";
+import multer from "multer";
+import { MulterError } from "multer";
+import { GoodsReceiptDocument } from "../models/GoodsReceiptDocument";
 import { GoodsReceiptLine } from "../models/GoodsReceiptLine";
 import { StockItem } from "../models/StockItem";
 import { sequelize } from "../db";
@@ -10,6 +14,11 @@ import {
 import { recordAudit } from "../services/audit";
 import { recordStockMovement, snapshotStock } from "../services/stockMovement";
 import {
+  IrsaliyePdfParseError,
+  parseIrsaliyePdf,
+  type ParsedIrsaliye,
+} from "../services/irsaliyePdfParser";
+import {
   optionalTrimmedString,
   positiveQuantity,
   trimmedString,
@@ -19,6 +28,18 @@ import {
 
 const router = Router();
 router.use(requireAuth, attachUser);
+
+const pdfUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype !== "application/pdf") {
+      cb(new Error("ONLY_PDF"));
+      return;
+    }
+    cb(null, true);
+  },
+});
 
 const malKabulLineSchema = z
   .object({
@@ -54,6 +75,46 @@ const cancelMalKabulSchema = z.object({
   reason: trimmedString("İptal nedeni", 500),
 });
 
+const confirmPdfImportSchema = z.object({
+  documentNo: trimmedString("İrsaliye no", 64),
+  documentDate: trimmedString("İrsaliye tarihi", 10).pipe(
+    z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "İrsaliye tarihi YYYY-MM-DD formatında olmalı")
+  ),
+  sourceFileName: optionalTrimmedString("Dosya adı", 255),
+  sourceFileSha256: optionalTrimmedString("Dosya özeti", 64),
+  lines: z
+    .array(
+      z.object({
+        rowNo: z.coerce.number().int().min(1, "Sıra no geçerli olmalı"),
+        sku: trimmedString("Malzeme kodu", 80),
+        name: trimmedString("Malzeme açıklaması", 240),
+        quantity: positiveQuantity,
+        unit: trimmedString("Birim", 24),
+      })
+    )
+    .min(1, "En az bir malzeme satırı gerekli"),
+  warnings: z.array(z.string()).optional(),
+});
+
+function uploadPdfSingle(req: AuthRequest, res: Response): Promise<void> {
+  return new Promise((resolve, reject) => {
+    pdfUpload.single("file")(req, res, (err) => {
+      if (err) reject(err);
+      else resolve();
+    });
+  });
+}
+
+function parseUploadError(err: unknown): string {
+  if (err instanceof MulterError && err.code === "LIMIT_FILE_SIZE") {
+    return "PDF dosyası en fazla 10MB olabilir";
+  }
+  if (err instanceof Error && err.message === "ONLY_PDF") {
+    return "Sadece PDF dosyası yükleyebilirsiniz";
+  }
+  return "PDF yüklenemedi";
+}
+
 router.get("/", requirePermission("malKabul.read"), async (req: AuthRequest, res: Response) => {
   const filter = String(req.query.status ?? "active");
   const where =
@@ -71,6 +132,141 @@ router.get("/", requirePermission("malKabul.read"), async (req: AuthRequest, res
   });
   res.json(rows);
 });
+
+router.post("/import/pdf/parse", requirePermission("malKabul.write"), async (req: AuthRequest, res: Response) => {
+  try {
+    await uploadPdfSingle(req, res);
+  } catch (err) {
+    res.status(err instanceof MulterError && err.code === "LIMIT_FILE_SIZE" ? 413 : 400).json({
+      error: parseUploadError(err),
+    });
+    return;
+  }
+
+  const file = req.file;
+  if (!file) {
+    res.status(400).json({ error: "PDF dosyası gerekli" });
+    return;
+  }
+
+  try {
+    const parsed = await parseIrsaliyePdf(file.buffer);
+    const fileSha256 = crypto.createHash("sha256").update(file.buffer).digest("hex");
+    res.json({
+      data: {
+        ...parsed,
+        sourceFileName: file.originalname,
+        sourceFileSha256: fileSha256,
+      },
+    });
+  } catch (err) {
+    const message =
+      err instanceof IrsaliyePdfParseError
+        ? err.message
+        : "PDF metni okunamadı veya e-irsaliye formatı tanınamadı";
+    res.status(400).json({ error: message });
+  }
+});
+
+router.post(
+  "/import/pdf/confirm",
+  requirePermission("malKabul.write"),
+  validateBody(confirmPdfImportSchema),
+  async (req: AuthRequest, res: Response) => {
+    const payload = req.body as ParsedIrsaliye & {
+      sourceFileName?: string;
+      sourceFileSha256?: string;
+    };
+
+    const duplicateDocument = await GoodsReceiptDocument.findOne({
+      where: { documentNo: payload.documentNo },
+      attributes: ["id"],
+    });
+    const duplicateLegacyLine = await GoodsReceiptLine.findOne({
+      where: { irsaliyeNo: payload.documentNo },
+      attributes: ["id"],
+    });
+    if (duplicateDocument || duplicateLegacyLine) {
+      res.status(409).json({ error: "Bu irsaliye daha önce işlenmiş." });
+      return;
+    }
+
+    try {
+      const result = await sequelize.transaction(async (transaction) => {
+        const document = await GoodsReceiptDocument.create(
+          {
+            documentNo: payload.documentNo.trim(),
+            documentDate: payload.documentDate as unknown as Date,
+            source: "pdf",
+            sourceFileName: payload.sourceFileName?.trim() || null,
+            sourceFileSha256: payload.sourceFileSha256?.trim() || null,
+            createdByUserId: req.sessionUser?.id ?? null,
+            rawParseJson: {
+              lineCount: payload.lines.length,
+              warnings: payload.warnings ?? [],
+            },
+          },
+          { transaction }
+        );
+
+        const createdLines: GoodsReceiptLine[] = [];
+        for (const line of payload.lines) {
+          const createdLine = await GoodsReceiptLine.create(
+            {
+              documentId: document.id,
+              rowNo: line.rowNo,
+              irsaliyeNo: payload.documentNo.trim(),
+              irsaliyeTarihi: payload.documentDate as unknown as Date,
+              materialCode: line.sku.trim(),
+              materialDescription: line.name.trim().slice(0, 240),
+              quantity: line.quantity,
+              unit: line.unit.trim().slice(0, 24),
+            },
+            { transaction }
+          );
+          await incrementStockForMalKabul(
+            {
+              sku: line.sku,
+              name: line.name,
+              qty: Number(line.quantity),
+              unit: line.unit,
+              machineId: null,
+              actorUserId: req.sessionUser?.id,
+              referenceId: createdLine.id,
+            },
+            transaction
+          );
+          createdLines.push(createdLine);
+        }
+
+        await recordAudit(
+          {
+            actorUserId: req.sessionUser?.id,
+            action: "mal_kabul.pdf_import",
+            entityType: "goods_receipt_document",
+            entityId: document.id,
+            metadata: {
+              documentNo: document.documentNo,
+              documentDate: payload.documentDate,
+              lineCount: createdLines.length,
+              sourceFileSha256: payload.sourceFileSha256 ?? null,
+            },
+          },
+          transaction
+        );
+
+        return { document, lines: createdLines };
+      });
+      res.status(201).json(result);
+    } catch (e) {
+      if (e instanceof Error && e.message === "INVALID_QTY") {
+        res.status(400).json({ error: "Miktar en az 1 tam adet olmalı" });
+        return;
+      }
+      res.status(409).json({ error: "PDF mal kabul kaydı oluşturulamadı" });
+    }
+  }
+);
 
 /** Tek irsaliye altında birden fazla malzeme; tek işlemde atomik kayıt + stok. */
 router.post("/batch", requirePermission("malKabul.write"), validateBody(batchMalKabulSchema), async (req: AuthRequest, res: Response) => {

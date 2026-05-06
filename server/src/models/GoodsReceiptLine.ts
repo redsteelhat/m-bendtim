@@ -13,11 +13,14 @@ export class GoodsReceiptLine extends Model<
   InferCreationAttributes<GoodsReceiptLine>
 > {
   declare id: CreationOptional<number>;
+  declare documentId: CreationOptional<number | null>;
+  declare rowNo: CreationOptional<number | null>;
   declare irsaliyeNo: string;
   declare irsaliyeTarihi: Date;
   declare materialCode: string;
   declare materialDescription: string;
   declare quantity: number;
+  declare unit: CreationOptional<string>;
   declare isCancelled: CreationOptional<boolean>;
   declare cancelledAt: CreationOptional<Date | null>;
   declare cancelledByUserId: CreationOptional<number | null>;
@@ -33,6 +36,14 @@ GoodsReceiptLine.init(
       autoIncrement: true,
       primaryKey: true,
     },
+    documentId: {
+      type: DataTypes.INTEGER.UNSIGNED,
+      allowNull: true,
+      references: { model: "goods_receipt_documents", key: "id" },
+      onDelete: "SET NULL",
+      onUpdate: "CASCADE",
+    },
+    rowNo: { type: DataTypes.INTEGER.UNSIGNED, allowNull: true },
     irsaliyeNo: { type: DataTypes.STRING(64), allowNull: false },
     irsaliyeTarihi: { type: DataTypes.DATEONLY, allowNull: false },
     materialCode: { type: DataTypes.STRING(80), allowNull: false },
@@ -41,6 +52,7 @@ GoodsReceiptLine.init(
       type: DataTypes.DECIMAL(14, 3),
       allowNull: false,
     },
+    unit: { type: DataTypes.STRING(24), allowNull: false, defaultValue: "Adet" },
     isCancelled: {
       type: DataTypes.BOOLEAN,
       allowNull: false,
@@ -58,5 +70,10 @@ GoodsReceiptLine.init(
     createdAt: DataTypes.DATE,
     updatedAt: DataTypes.DATE,
   },
-  { sequelize, tableName: "goods_receipt_lines", modelName: "GoodsReceiptLine" }
+  {
+    sequelize,
+    tableName: "goods_receipt_lines",
+    modelName: "GoodsReceiptLine",
+    indexes: [{ fields: ["documentId"] }, { fields: ["irsaliyeNo"] }],
+  }
 );

@@ -11,22 +11,18 @@ router.use(requireAuth, attachUser);
 router.get("/summary", requirePermission("dashboard.read"), async (_req: AuthRequest, res: Response) => {
   const [
     stockTotal,
-    stockBekliyor,
-    stockIsleniyor,
-    stockTamamlandi,
-    sevkBekleyen,
+    stockTotalQuantity,
     sevkEdildi,
+    sevkEdildiQuantity,
     machineTotal,
     recentLines,
   ] = await Promise.all([
     StockItem.count(),
-    StockItem.count({ where: { processStatus: "bekliyor" } }),
-    StockItem.count({ where: { processStatus: "isleniyor" } }),
-    StockItem.count({ where: { processStatus: "tamamlandi" } }),
+    StockItem.sum("quantity"),
     StockItem.count({
-      where: { processStatus: "tamamlandi", isShipped: false },
+      where: { processStatus: "tamamlandi", isShipped: true },
     }),
-    StockItem.count({
+    StockItem.sum("quantity", {
       where: { processStatus: "tamamlandi", isShipped: true },
     }),
     Machine.count(),
@@ -49,13 +45,11 @@ router.get("/summary", requirePermission("dashboard.read"), async (_req: AuthReq
   res.json({
     stock: {
       total: stockTotal,
-      bekliyor: stockBekliyor,
-      isleniyor: stockIsleniyor,
-      tamamlandi: stockTamamlandi,
+      totalQuantity: Number(stockTotalQuantity) || 0,
     },
     sevk: {
-      bekleyen: sevkBekleyen,
       edildi: sevkEdildi,
+      edildiQuantity: Number(sevkEdildiQuantity) || 0,
     },
     machines: { total: machineTotal },
     recentMalKabul: recentLines.map((r) => r.toJSON()),
