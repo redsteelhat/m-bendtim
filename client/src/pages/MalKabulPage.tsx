@@ -20,6 +20,13 @@ function newLineKey(): string {
 
 type DraftLine = { key: string; materialCode: string; productName: string; quantity: string };
 type MalKabulFilter = "active" | "cancelled" | "all";
+type MalKabulGroup = {
+  irsaliyeNo: string;
+  irsaliyeTarihi: string;
+  lines: MalKabulLine[];
+  totalQuantity: number;
+  allCancelled: boolean;
+};
 
 export function MalKabulPage() {
   const { hasPermission } = useAuth();
@@ -31,6 +38,7 @@ export function MalKabulPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [pdfImportOpen, setPdfImportOpen] = useState(false);
   const [cancelTarget, setCancelTarget] = useState<MalKabulLine | null>(null);
+  const [detailGroup, setDetailGroup] = useState<MalKabulGroup | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [filter, setFilter] = useState<MalKabulFilter>("active");
   const [query, setQuery] = useState("");
@@ -42,9 +50,25 @@ export function MalKabulPage() {
       [row.irsaliyeNo, row.materialCode, row.materialDescription ?? ""]
         .join(" ")
         .toLocaleLowerCase("tr-TR")
-      .includes(normalizedQuery)
+        .includes(normalizedQuery)
     );
   }, [query, rows]);
+
+  const groups = useMemo<MalKabulGroup[]>(() => {
+    const byNo = new Map<string, MalKabulLine[]>();
+    for (const row of filteredRows) {
+      const groupRows = byNo.get(row.irsaliyeNo) ?? [];
+      groupRows.push(row);
+      byNo.set(row.irsaliyeNo, groupRows);
+    }
+    return [...byNo.entries()].map(([irsaliyeNo, lines]) => ({
+      irsaliyeNo,
+      irsaliyeTarihi: lines[0]?.irsaliyeTarihi ?? "",
+      lines,
+      totalQuantity: lines.reduce((sum, row) => sum + (Number(row.quantity) || 0), 0),
+      allCancelled: lines.every((row) => Boolean(row.isCancelled)),
+    }));
+  }, [filteredRows]);
 
   const load = useCallback(async () => {
     setLoadError(null);
@@ -128,7 +152,7 @@ export function MalKabulPage() {
       {loadError && <p className={styles.banner}>{loadError}</p>}
       {loading ? (
         <LoadingState />
-      ) : filteredRows.length === 0 ? (
+      ) : groups.length === 0 ? (
         <EmptyState title="Mal kabul kaydı bulunamadı" text="Bu filtrelerle mal kabul kalemi bulunamadı." />
       ) : (
         <>
@@ -138,42 +162,34 @@ export function MalKabulPage() {
               <tr>
                 <th>İrsaliye no</th>
                 <th>İşlem tarihi</th>
-                <th>Malzeme kodu</th>
-                <th>Ürün adı</th>
-                <th>Miktar</th>
+                <th>Kalem</th>
+                <th>Toplam adet</th>
                 <th>Durum</th>
-                <th />
               </tr>
             </thead>
             <tbody>
-              {filteredRows.map((r) => (
-                <tr key={r.id}>
-                  <td>{r.irsaliyeNo}</td>
-                  <td>{toInputDate(r.irsaliyeTarihi)}</td>
-                  <td>{r.materialCode}</td>
-                  <td>{(r.materialDescription ?? "").trim() || "—"}</td>
-                  <td>{formatQtyInteger(r.quantity)}</td>
+              {groups.map((group) => (
+                <tr key={group.irsaliyeNo}>
                   <td>
-                    {r.isCancelled ? (
+                    <div className={mkStyles.documentCell}>
+                      <span>{group.irsaliyeNo}</span>
+                      <button
+                        type="button"
+                        className={styles.linkBtn}
+                        onClick={() => setDetailGroup(group)}
+                      >
+                        Detay
+                      </button>
+                    </div>
+                  </td>
+                  <td>{toInputDate(group.irsaliyeTarihi)}</td>
+                  <td>{group.lines.length}</td>
+                  <td>{formatQtyInteger(group.totalQuantity)}</td>
+                  <td>
+                    {group.allCancelled ? (
                       <span className={mkStyles.cancelledBadge}>İptal edildi</span>
                     ) : (
                       <span className={mkStyles.activeBadge}>Aktif</span>
-                    )}
-                  </td>
-                  <td className={styles.actions}>
-                    {canWrite && !r.isCancelled && (
-                      <button
-                        type="button"
-                        className={styles.dangerBtn}
-                        onClick={() => setCancelTarget(r)}
-                      >
-                        İptal Et
-                      </button>
-                    )}
-                    {r.isCancelled && r.cancelReason && (
-                      <span className="muted" title={r.cancelReason}>
-                        {r.cancelReason}
-                      </span>
                     )}
                   </td>
                 </tr>
@@ -182,6 +198,14 @@ export function MalKabulPage() {
           </table>
         </div>
         </>
+      )}
+      {detailGroup && (
+        <MalKabulDetailModal
+          group={detailGroup}
+          canWrite={canWrite}
+          onClose={() => setDetailGroup(null)}
+          onCancelLine={(line) => setCancelTarget(line)}
+        />
       )}
       {modalOpen && canWrite && (
         <MalKabulEntryModal
@@ -211,11 +235,91 @@ export function MalKabulPage() {
           onClose={() => setCancelTarget(null)}
           onCancelled={async () => {
             setCancelTarget(null);
+            setDetailGroup(null);
             await load();
             showToast("Mal kabul kalemi iptal edildi.", "success");
           }}
         />
       )}
+    </div>
+  );
+}
+
+function MalKabulDetailModal({
+  group,
+  canWrite,
+  onClose,
+  onCancelLine,
+}: {
+  group: MalKabulGroup;
+  canWrite: boolean;
+  onClose: () => void;
+  onCancelLine: (line: MalKabulLine) => void;
+}) {
+  return (
+    <div className={styles.overlay} role="presentation" onClick={onClose}>
+      <div
+        className={`${styles.modal} ${styles.modalExtraWide}`}
+        role="dialog"
+        aria-modal
+        onClick={(ev) => ev.stopPropagation()}
+      >
+        <h2 className={styles.modalTitle}>{group.irsaliyeNo} detay</h2>
+        <p className="muted" style={{ margin: "0 0 0.75rem" }}>
+          {toInputDate(group.irsaliyeTarihi)} / {group.lines.length} kalem / toplam{" "}
+          {formatQtyInteger(group.totalQuantity)} adet
+        </p>
+        <div className={mkStyles.detailTableWrap}>
+          <table className={styles.table}>
+            <thead>
+              <tr>
+                <th>Malzeme kodu</th>
+                <th>Ürün adı</th>
+                <th>Miktar</th>
+                <th>Durum</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {group.lines.map((line) => (
+                <tr key={line.id}>
+                  <td>{line.materialCode}</td>
+                  <td>{(line.materialDescription ?? "").trim() || "—"}</td>
+                  <td>{formatQtyInteger(line.quantity)}</td>
+                  <td>
+                    {line.isCancelled ? (
+                      <span className={mkStyles.cancelledBadge}>İptal edildi</span>
+                    ) : (
+                      <span className={mkStyles.activeBadge}>Aktif</span>
+                    )}
+                  </td>
+                  <td className={styles.actions}>
+                    {canWrite && !line.isCancelled && (
+                      <button
+                        type="button"
+                        className={styles.dangerBtn}
+                        onClick={() => onCancelLine(line)}
+                      >
+                        İptal Et
+                      </button>
+                    )}
+                    {line.isCancelled && line.cancelReason && (
+                      <span className="muted" title={line.cancelReason}>
+                        {line.cancelReason}
+                      </span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className={styles.modalActions}>
+          <button type="button" className={styles.primary} onClick={onClose}>
+            Kapat
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

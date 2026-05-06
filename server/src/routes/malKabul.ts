@@ -125,12 +125,25 @@ router.get("/", requirePermission("malKabul.read"), async (req: AuthRequest, res
         : { isCancelled: false };
   const rows = await GoodsReceiptLine.findAll({
     where,
+    include: [
+      {
+        model: StockItem,
+        as: "stockItems",
+        attributes: ["id"],
+        required: false,
+      },
+    ],
     order: [
       ["irsaliyeTarihi", "DESC"],
       ["id", "DESC"],
     ],
   });
-  res.json(rows);
+  const visibleRows = rows.filter((row) => {
+    const plain = row.get({ plain: true }) as { isCancelled?: boolean; stockItems?: Array<{ id: number }> };
+    if (plain.isCancelled) return true;
+    return (plain.stockItems ?? []).length > 0;
+  });
+  res.json(visibleRows);
 });
 
 router.post("/import/pdf/parse", requirePermission("malKabul.write"), async (req: AuthRequest, res: Response) => {

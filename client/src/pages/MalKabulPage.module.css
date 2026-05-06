@@ -87,6 +87,20 @@
   margin-top: 0.5rem;
 }
 
+.documentCell {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  white-space: nowrap;
+}
+
+.detailTableWrap {
+  max-height: 24rem;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
 .importModal {
   max-width: min(980px, calc(100vw - 2rem));
   overflow: auto;
