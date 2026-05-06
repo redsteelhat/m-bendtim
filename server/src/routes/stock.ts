@@ -73,6 +73,10 @@ const bulkStockSchema = z
     "Makina veya durum belirtilmeli"
   );
 
+const bulkDeleteStockSchema = z.object({
+  ids: idList,
+});
+
 const stockUpdateSchema = z
   .object({
     sku: optionalTrimmedString("Malzeme kodu", 80),
@@ -377,6 +381,74 @@ router.patch("/bulk", requirePermission("stock.write"), validateBody(bulkStockSc
     }
     console.error(e);
     res.status(409).json({ error: "Toplu güncelleme başarısız" });
+  }
+});
+
+router.post("/bulk-delete", requirePermission("stock.write"), validateBody(bulkDeleteStockSchema), async (req: AuthRequest, res: Response) => {
+  const { ids } = req.body as { ids?: unknown };
+  if (!Array.isArray(ids) || ids.length === 0) {
+    res.status(400).json({ error: "En az bir kayıt seçilmeli" });
+    return;
+  }
+  const idNums = ids.map((x) => Number(x));
+  if (idNums.some((n) => !Number.isInteger(n) || n < 1)) {
+    res.status(400).json({ error: "Geçersiz id listesi" });
+    return;
+  }
+
+  try {
+    await sequelize.transaction(async (transaction) => {
+      for (const id of idNums) {
+        const row = await StockItem.findByPk(id, {
+          transaction,
+          lock: transaction.LOCK.UPDATE,
+        });
+        if (!row) {
+          throw new Error("NOT_FOUND");
+        }
+        ensureShippedStockEditable(row, req);
+        const before = snapshotStock(row);
+        await recordStockMovement(
+          {
+            type: "manual_update",
+            actorUserId: req.sessionUser?.id,
+            before,
+            sku: before.sku,
+            name: before.name,
+            quantityDelta: -(before.quantity ?? 0),
+            referenceType: "stock_bulk_delete",
+            referenceId: id,
+            metadata: { deleted: true },
+          },
+          transaction
+        );
+        await row.destroy({ transaction });
+      }
+      await recordAudit(
+        {
+          actorUserId: req.sessionUser?.id,
+          action: "stock.bulk_delete",
+          entityType: "stock_item",
+          entityId: null,
+          metadata: { ids: idNums },
+        },
+        transaction
+      );
+    });
+    res.status(204).send();
+  } catch (e) {
+    if (e instanceof Error && e.message === "NOT_FOUND") {
+      res.status(404).json({ error: "Seçilen kayıtlardan biri bulunamadı" });
+      return;
+    }
+    if (e instanceof Error && e.message === "SHIPPED_LOCKED") {
+      res.status(409).json({
+        error: "Sevk edilmiş stok toplu silme ile silinemez",
+      });
+      return;
+    }
+    console.error(e);
+    res.status(409).json({ error: "Toplu silme başarısız" });
   }
 });
 

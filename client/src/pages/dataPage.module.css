@@ -45,6 +45,7 @@
   border-radius: 12px;
   background: var(--surface);
   max-width: 100%;
+  max-height: min(64vh, 44rem);
   -webkit-overflow-scrolling: touch;
 }
 

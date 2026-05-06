@@ -75,7 +75,6 @@ export function StokPage() {
   const [statusFilter, setStatusFilter] = useState<"all" | StockProcessStatus>("all");
   const [machineFilter, setMachineFilter] = useState("all");
   const [shipmentFilter, setShipmentFilter] = useState<"all" | "shipped" | "waiting">("all");
-  const [page, setPage] = useState(1);
   const [confirmAction, setConfirmAction] = useState<{
     title: string;
     message: string;
@@ -83,8 +82,6 @@ export function StokPage() {
     danger?: boolean;
     run: () => Promise<void>;
   } | null>(null);
-
-  const pageSize = 12;
 
   const filteredRows = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase("tr-TR");
@@ -104,11 +101,8 @@ export function StokPage() {
     });
   }, [machineFilter, query, rows, shipmentFilter, statusFilter]);
 
-  const pageCount = Math.max(1, Math.ceil(filteredRows.length / pageSize));
-  const pagedRows = filteredRows.slice((page - 1) * pageSize, page * pageSize);
-
   const selectedCount = selectedIds.size;
-  const visibleIds = useMemo(() => pagedRows.map((r) => r.id), [pagedRows]);
+  const visibleIds = useMemo(() => filteredRows.map((r) => r.id), [filteredRows]);
   const visibleSelectedCount = visibleIds.filter((id) => selectedIds.has(id)).length;
   const allSelected = visibleIds.length > 0 && visibleSelectedCount === visibleIds.length;
   const someSelected = selectedCount > 0 && !allSelected;
@@ -200,10 +194,6 @@ export function StokPage() {
     void load();
   }, [load]);
 
-  useEffect(() => {
-    setPage(1);
-  }, [machineFilter, query, shipmentFilter, statusFilter]);
-
   async function deleteStock(row: StockItem) {
     try {
       await api(`/api/stock/${row.id}`, { method: "DELETE" });
@@ -211,6 +201,27 @@ export function StokPage() {
       showToast("Stok kaydı silindi.", "success");
     } catch (e) {
       showToast(e instanceof Error ? e.message : "Silinemedi", "error");
+    }
+  }
+
+  async function applyBulkDelete() {
+    if (selectedCount === 0) return;
+    setBulkError(null);
+    setBulkBusy(true);
+    try {
+      await api("/api/stock/bulk-delete", {
+        method: "POST",
+        body: JSON.stringify({ ids: [...selectedIds] }),
+      });
+      setSelectedIds(new Set());
+      await load();
+      showToast("Seçili stok kayıtları silindi.", "success");
+    } catch (e) {
+      const message = e instanceof Error ? e.message : "Toplu silme başarısız";
+      setBulkError(message);
+      showToast(message, "error");
+    } finally {
+      setBulkBusy(false);
     }
   }
 
@@ -392,6 +403,22 @@ export function StokPage() {
             >
               {bulkBusy ? "…" : "Durumu güncelle"}
             </button>
+            <button
+              type="button"
+              className={dStyles.dangerBtn}
+              onClick={() =>
+                setConfirmAction({
+                  title: "Seçili stoklar silinsin mi?",
+                  message: `${selectedCount} stok kalemi silinecek. Sevk edilmiş stok varsa işlem bloklanır. Bu işlem geri alınamaz.`,
+                  confirmLabel: "Toplu sil",
+                  danger: true,
+                  run: applyBulkDelete,
+                })
+              }
+              disabled={bulkBusy}
+            >
+              Toplu sil
+            </button>
           </div>
         </div>
       )}
@@ -429,7 +456,7 @@ export function StokPage() {
               </tr>
             </thead>
             <tbody>
-              {pagedRows.map((r) => (
+              {filteredRows.map((r) => (
                 <tr key={r.id} className={rowClass(r.processStatus ?? "bekliyor")}>
                   {canWrite && (
                     <td className={pStyles.checkCol}>
@@ -504,30 +531,6 @@ export function StokPage() {
               ))}
             </tbody>
           </table>
-        </div>
-        <div className={pStyles.pagination}>
-          <span>
-            {filteredRows.length} kalem içinde {(page - 1) * pageSize + 1}-
-            {Math.min(page * pageSize, filteredRows.length)} gösteriliyor
-          </span>
-          <div>
-            <button
-              type="button"
-              className={dStyles.linkBtn}
-              disabled={page === 1}
-              onClick={() => setPage((current) => Math.max(1, current - 1))}
-            >
-              Önceki
-            </button>
-            <button
-              type="button"
-              className={dStyles.linkBtn}
-              disabled={page === pageCount}
-              onClick={() => setPage((current) => Math.min(pageCount, current + 1))}
-            >
-              Sonraki
-            </button>
-          </div>
         </div>
         </>
       )}

@@ -151,21 +151,6 @@
   color: var(--muted);
 }
 
-.pagination {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 1rem;
-  margin-top: 0.8rem;
-  color: var(--muted);
-  font-size: 0.86rem;
-}
-
-.pagination div {
-  display: flex;
-  gap: 0.5rem;
-}
-
 .detailGrid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
@@ -220,10 +205,5 @@
 @media (max-width: 620px) {
   .filterBar {
     grid-template-columns: 1fr;
-  }
-
-  .pagination {
-    align-items: flex-start;
-    flex-direction: column;
   }
 }
