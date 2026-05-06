@@ -34,9 +34,7 @@ export function MalKabulPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [filter, setFilter] = useState<MalKabulFilter>("active");
   const [query, setQuery] = useState("");
-  const [page, setPage] = useState(1);
 
-  const pageSize = 12;
   const filteredRows = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase("tr-TR");
     if (!normalizedQuery) return rows;
@@ -44,11 +42,9 @@ export function MalKabulPage() {
       [row.irsaliyeNo, row.materialCode, row.materialDescription ?? ""]
         .join(" ")
         .toLocaleLowerCase("tr-TR")
-        .includes(normalizedQuery)
+      .includes(normalizedQuery)
     );
   }, [query, rows]);
-  const pageCount = Math.max(1, Math.ceil(filteredRows.length / pageSize));
-  const pagedRows = filteredRows.slice((page - 1) * pageSize, page * pageSize);
 
   const load = useCallback(async () => {
     setLoadError(null);
@@ -65,10 +61,6 @@ export function MalKabulPage() {
   useEffect(() => {
     void load();
   }, [load]);
-
-  useEffect(() => {
-    setPage(1);
-  }, [filter, query]);
 
   return (
     <div>
@@ -154,7 +146,7 @@ export function MalKabulPage() {
               </tr>
             </thead>
             <tbody>
-              {pagedRows.map((r) => (
+              {filteredRows.map((r) => (
                 <tr key={r.id}>
                   <td>{r.irsaliyeNo}</td>
                   <td>{toInputDate(r.irsaliyeTarihi)}</td>
@@ -188,30 +180,6 @@ export function MalKabulPage() {
               ))}
             </tbody>
           </table>
-        </div>
-        <div className={mkStyles.pagination}>
-          <span>
-            {filteredRows.length} kalem içinde {(page - 1) * pageSize + 1}-
-            {Math.min(page * pageSize, filteredRows.length)} gösteriliyor
-          </span>
-          <div>
-            <button
-              type="button"
-              className={styles.linkBtn}
-              disabled={page === 1}
-              onClick={() => setPage((current) => Math.max(1, current - 1))}
-            >
-              Önceki
-            </button>
-            <button
-              type="button"
-              className={styles.linkBtn}
-              disabled={page === pageCount}
-              onClick={() => setPage((current) => Math.min(pageCount, current + 1))}
-            >
-              Sonraki
-            </button>
-          </div>
         </div>
         </>
       )}

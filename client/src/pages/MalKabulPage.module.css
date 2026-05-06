@@ -210,28 +210,8 @@
   background: rgba(248, 113, 113, 0.14);
 }
 
-.pagination {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 1rem;
-  margin-top: 0.8rem;
-  color: var(--muted);
-  font-size: 0.86rem;
-}
-
-.pagination div {
-  display: flex;
-  gap: 0.5rem;
-}
-
 @media (max-width: 620px) {
   .previewHeader {
     grid-template-columns: 1fr;
-  }
-
-  .pagination {
-    align-items: flex-start;
-    flex-direction: column;
   }
 }
