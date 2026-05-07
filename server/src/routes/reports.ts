@@ -162,6 +162,24 @@ function paged<T>(rows: T[], req: AuthRequest) {
   return { rows: rows.slice(offset, offset + limit), total: rows.length, page, limit };
 }
 
+function visibleMalKabulRows(rows: GoodsReceiptLine[]) {
+  return rows.filter((row) => {
+    const plain = row.get({ plain: true }) as {
+      isCancelled?: boolean;
+      stockItems?: Array<{ id: number }>;
+    };
+    if (plain.isCancelled) return true;
+    return (plain.stockItems ?? []).length > 0;
+  });
+}
+
+const includeStockItemsForVisibility = {
+  model: StockItem,
+  as: "stockItems",
+  attributes: ["id"],
+  required: false,
+};
+
 router.get("/overview", requirePermission("reports.read"), async (req: AuthRequest, res: Response) => {
   const includeCancelled = boolQuery(req.query.includeCancelled) === true;
   const malKabulWhere: AnyWhere = {
@@ -170,17 +188,18 @@ router.get("/overview", requirePermission("reports.read"), async (req: AuthReque
     ...(includeCancelled ? {} : { isCancelled: false }),
   };
   const stockFilters = stockWhere(req);
-  const [malKabulCount, malKabulQty, stockCount, stockQty, machineCount, entries] = await Promise.all([
-    GoodsReceiptLine.count({ where: malKabulWhere }),
-    GoodsReceiptLine.sum("quantity", { where: malKabulWhere }),
+  const [malKabulRows, stockCount, stockQty, machineCount, entries] = await Promise.all([
+    GoodsReceiptLine.findAll({ where: malKabulWhere, include: [includeStockItemsForVisibility] }),
     StockItem.count({ where: stockFilters }),
     StockItem.sum("quantity", { where: stockFilters }),
     Machine.count(),
     shipmentEntries(req),
   ]);
+  const visibleMalKabul = visibleMalKabulRows(malKabulRows);
+  const malKabulQty = visibleMalKabul.reduce((sum, row) => sum + (Number(row.quantity) || 0), 0);
   const sevkQty = entries.reduce((sum, entry) => sum + (Number(entry.stock.quantity) || 0), 0);
   res.json({
-    malKabul: { kalem: malKabulCount, adet: Number(malKabulQty) || 0 },
+    malKabul: { kalem: visibleMalKabul.length, adet: malKabulQty },
     stock: { kalem: stockCount, adet: Number(stockQty) || 0 },
     shipments: { kalem: entries.length, adet: sevkQty },
     machines: { total: machineCount },
@@ -195,17 +214,18 @@ router.get("/mal-kabul", requirePermission("reports.read"), async (req: AuthRequ
     ...textFilter(req, "malKabul"),
     ...(includeCancelled ? {} : { isCancelled: false }),
   };
-  const { rows, count } = await GoodsReceiptLine.findAndCountAll({
+  const rows = await GoodsReceiptLine.findAll({
     where,
+    include: [includeStockItemsForVisibility],
     order: [
       ["irsaliyeTarihi", "DESC"],
       ["id", "DESC"],
     ],
-    limit,
-    offset,
   });
+  const visibleRows = visibleMalKabulRows(rows);
+  const pagedRows = visibleRows.slice(offset, offset + limit);
   res.json({
-    rows: rows.map((r) => ({
+    rows: pagedRows.map((r) => ({
       id: r.id,
       irsaliyeNo: r.irsaliyeNo,
       irsaliyeTarihi: dateOnlyToStr(r.irsaliyeTarihi),
@@ -215,7 +235,7 @@ router.get("/mal-kabul", requirePermission("reports.read"), async (req: AuthRequ
       isCancelled: r.isCancelled,
       cancelReason: r.cancelReason,
     })),
-    total: count,
+    total: visibleRows.length,
     page,
     limit,
   });
@@ -347,6 +367,7 @@ router.get("/range", requirePermission("reports.read"), async (req: AuthRequest,
         ...dateRange(req, "irsaliyeTarihi"),
         ...(boolQuery(req.query.includeCancelled) ? {} : { isCancelled: false }),
       },
+      include: [includeStockItemsForVisibility],
       order: [
         ["irsaliyeTarihi", "DESC"],
         ["id", "DESC"],
@@ -354,8 +375,9 @@ router.get("/range", requirePermission("reports.read"), async (req: AuthRequest,
     }),
     shipmentEntries(req),
   ]);
+  const visibleMalKabul = visibleMalKabulRows(malKabul);
   const malKabulMalzemeMap = new Map<string, { toplamMiktar: number; satirSayisi: number; dates: Set<string> }>();
-  for (const row of malKabul) {
+  for (const row of visibleMalKabul) {
     const current = malKabulMalzemeMap.get(row.materialCode) ?? {
       toplamMiktar: 0,
       satirSayisi: 0,
@@ -374,7 +396,7 @@ router.get("/range", requirePermission("reports.read"), async (req: AuthRequest,
     sevkMap.set(entry.stock.sku, current);
   }
   res.json({
-    malKabul: malKabul.map((r) => ({
+    malKabul: visibleMalKabul.map((r) => ({
       id: r.id,
       irsaliyeNo: r.irsaliyeNo,
       irsaliyeTarihi: dateOnlyToStr(r.irsaliyeTarihi),
@@ -405,8 +427,8 @@ router.get("/range", requirePermission("reports.read"), async (req: AuthRequest,
     })),
     sevkMalzemeOzeti: [...sevkMap.entries()].map(([sku, value]) => ({ sku, ...value })),
     ozet: {
-      malKabulSatirSayisi: malKabul.length,
-      malKabulToplamAdet: malKabul.reduce((sum, row) => sum + (Number(row.quantity) || 0), 0),
+      malKabulSatirSayisi: visibleMalKabul.length,
+      malKabulToplamAdet: visibleMalKabul.reduce((sum, row) => sum + (Number(row.quantity) || 0), 0),
       sevkSatirSayisi: shipments.length,
       sevkToplamAdet: shipments.reduce((sum, entry) => sum + (Number(entry.stock.quantity) || 0), 0),
     },

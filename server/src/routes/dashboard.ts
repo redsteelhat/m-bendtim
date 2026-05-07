@@ -28,6 +28,14 @@ router.get("/summary", requirePermission("dashboard.read"), async (_req: AuthReq
     Machine.count(),
     GoodsReceiptLine.findAll({
       where: { isCancelled: false },
+      include: [
+        {
+          model: StockItem,
+          as: "stockItems",
+          attributes: ["id"],
+          required: true,
+        },
+      ],
       order: [["createdAt", "DESC"]],
       limit: 8,
       attributes: [

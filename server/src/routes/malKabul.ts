@@ -191,36 +191,64 @@ router.post(
       sourceFileSha256?: string;
     };
 
-    const duplicateDocument = await GoodsReceiptDocument.findOne({
+    const existingDocument = await GoodsReceiptDocument.findOne({
       where: { documentNo: payload.documentNo },
-      attributes: ["id"],
     });
-    const duplicateLegacyLine = await GoodsReceiptLine.findOne({
+    const existingLines = await GoodsReceiptLine.findAll({
       where: { irsaliyeNo: payload.documentNo },
-      attributes: ["id"],
+      include: [
+        {
+          model: StockItem,
+          as: "stockItems",
+          attributes: ["id"],
+          required: false,
+        },
+      ],
     });
-    if (duplicateDocument || duplicateLegacyLine) {
+    const hasLiveStockForDocument = existingLines.some((line) => {
+      const plain = line.get({ plain: true }) as {
+        isCancelled?: boolean;
+        stockItems?: Array<{ id: number }>;
+      };
+      return !plain.isCancelled && (plain.stockItems ?? []).length > 0;
+    });
+    if (hasLiveStockForDocument) {
       res.status(409).json({ error: "Bu irsaliye daha önce işlenmiş." });
       return;
     }
 
     try {
       const result = await sequelize.transaction(async (transaction) => {
-        const document = await GoodsReceiptDocument.create(
-          {
-            documentNo: payload.documentNo.trim(),
-            documentDate: payload.documentDate as unknown as Date,
-            source: "pdf",
-            sourceFileName: payload.sourceFileName?.trim() || null,
-            sourceFileSha256: payload.sourceFileSha256?.trim() || null,
-            createdByUserId: req.sessionUser?.id ?? null,
-            rawParseJson: {
-              lineCount: payload.lines.length,
-              warnings: payload.warnings ?? [],
+        const document =
+          existingDocument ??
+          (await GoodsReceiptDocument.create(
+            {
+              documentNo: payload.documentNo.trim(),
+              documentDate: payload.documentDate as unknown as Date,
+              source: "pdf",
+              sourceFileName: payload.sourceFileName?.trim() || null,
+              sourceFileSha256: payload.sourceFileSha256?.trim() || null,
+              createdByUserId: req.sessionUser?.id ?? null,
+              rawParseJson: {
+                lineCount: payload.lines.length,
+                warnings: payload.warnings ?? [],
+              },
             },
-          },
-          { transaction }
-        );
+            { transaction }
+          ));
+
+        if (existingDocument) {
+          existingDocument.documentDate = payload.documentDate as unknown as Date;
+          existingDocument.source = "pdf";
+          existingDocument.sourceFileName = payload.sourceFileName?.trim() || null;
+          existingDocument.sourceFileSha256 = payload.sourceFileSha256?.trim() || null;
+          existingDocument.rawParseJson = {
+            lineCount: payload.lines.length,
+            warnings: payload.warnings ?? [],
+            reimportedAfterStockDelete: true,
+          };
+          await existingDocument.save({ transaction });
+        }
 
         const createdLines: GoodsReceiptLine[] = [];
         for (const line of payload.lines) {
