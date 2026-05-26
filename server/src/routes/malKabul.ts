@@ -41,35 +41,25 @@ const pdfUpload = multer({
   },
 });
 
-const malKabulLineSchema = z
-  .object({
-    materialCode: trimmedString("Malzeme kodu", 80),
-    productName: optionalTrimmedString("Ürün adı", 200),
-    materialDescription: optionalTrimmedString("Ürün adı", 240),
-    quantity: positiveQuantity,
-  })
-  .refine(
-    (line) => Boolean(line.productName || line.materialDescription),
-    "Ürün adı gerekli"
-  );
+const malKabulLineSchema = z.object({
+  materialCode: trimmedString("Malzeme kodu", 80),
+  productName: optionalTrimmedString("Ürün adı", 200),
+  materialDescription: optionalTrimmedString("Ürün adı", 240),
+  quantity: positiveQuantity,
+});
 
 const batchMalKabulSchema = z.object({
   irsaliyeNo: trimmedString("İrsaliye no", 64),
   lines: z.array(malKabulLineSchema).min(1, "En az bir malzeme satırı gerekli"),
 });
 
-const createMalKabulSchema = z
-  .object({
-    irsaliyeNo: trimmedString("İrsaliye no", 64),
-    materialCode: trimmedString("Malzeme kodu", 80),
-    materialDescription: optionalTrimmedString("Ürün adı", 240),
-    productName: optionalTrimmedString("Ürün adı", 200),
-    quantity: positiveQuantity,
-  })
-  .refine(
-    (body) => Boolean(body.productName || body.materialDescription),
-    "Ürün adı gerekli"
-  );
+const createMalKabulSchema = z.object({
+  irsaliyeNo: trimmedString("İrsaliye no", 64),
+  materialCode: trimmedString("Malzeme kodu", 80),
+  materialDescription: optionalTrimmedString("Ürün adı", 240),
+  productName: optionalTrimmedString("Ürün adı", 200),
+  quantity: positiveQuantity,
+});
 
 const cancelMalKabulSchema = z.object({
   reason: trimmedString("İptal nedeni", 500),
@@ -354,12 +344,9 @@ router.post("/batch", requirePermission("malKabul.write"), validateBody(batchMal
           ? String(row.materialDescription)
           : "";
     const descTrim = nameRaw.trim();
-    if (!descTrim) {
-      res.status(400).json({ error: `«${code}» için ürün adı gerekli` });
-      return;
-    }
-    const descStored = descTrim.slice(0, 240);
-    const stockName = descTrim.slice(0, 200);
+    const fallbackName = descTrim || code;
+    const descStored = fallbackName.slice(0, 240);
+    const stockName = fallbackName.slice(0, 200);
     normalized.push({ code, descStored, stockName, adet });
   }
 
@@ -477,12 +464,9 @@ router.post("/", requirePermission("malKabul.write"), validateBody(createMalKabu
         ? String(materialDescription)
         : "";
   const descTrim = nameRaw.trim();
-  if (!descTrim) {
-    res.status(400).json({ error: "Ürün adı gerekli" });
-    return;
-  }
-  const descStored = descTrim.slice(0, 240);
-  const stockName = descTrim.slice(0, 200);
+  const fallbackName = descTrim || code;
+  const descStored = fallbackName.slice(0, 240);
+  const stockName = fallbackName.slice(0, 200);
 
   try {
     const islemTarihi = dateOnlyLocal();

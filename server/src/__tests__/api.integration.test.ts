@@ -200,6 +200,23 @@ runIfTestDb("critical API business flows", () => {
       expect(await modules.StockItem.count({ where: { goodsReceiptLineId: lineId } })).toBe(0);
     });
 
+    it("creates manual goods receipt stock without product name", async () => {
+      const created = await request(modules.app)
+        .post("/api/mal-kabul/batch")
+        .set(auth(operatorToken))
+        .send({
+          irsaliyeNo: "IRS-OPTIONAL-NAME",
+          lines: [{ materialCode: "MK-NAMELESS", productName: "", quantity: 1 }],
+        });
+
+      expect(created.status).toBe(201);
+      expect(created.body.lines[0].materialDescription).toBe("MK-NAMELESS");
+
+      const stock = await modules.StockItem.findOne({ where: { sku: "MK-NAMELESS" } });
+      expect(stock).not.toBeNull();
+      expect(stock!.name).toBe("MK-NAMELESS");
+    });
+
     it("blocks cancellation when related stock has progressed", async () => {
       const created = await request(modules.app)
         .post("/api/mal-kabul/batch")

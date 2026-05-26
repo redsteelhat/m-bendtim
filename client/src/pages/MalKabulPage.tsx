@@ -115,9 +115,9 @@ export function MalKabulPage() {
       {!canWrite && <p className="muted" style={{ margin: "0 0 1rem" }}>Salt okunur görünüm.</p>}
       <p className="muted" style={{ margin: "0 0 1rem", maxWidth: "48rem" }}>
         Aynı irsaliyede birden fazla malzeme satırı girebilirsiniz; her satırda malzeme kodu,
-        <strong> ürün adı</strong> ve adet girilir. <strong>İşlem tarihi</strong> kayıt anındaki gün
+        opsiyonel <strong>ürün adı</strong> ve adet girilir. <strong>İşlem tarihi</strong> kayıt anındaki gün
         olarak otomatik atanır. Adet kadar stokta <strong>ayrı kayıt</strong> (her biri 1 adet)
-        açılır; ürün adı <strong>Stoklar</strong> listesinde görünür. Makina ve işlem durumu{" "}
+        açılır; ürün adı girilirse <strong>Stoklar</strong> listesinde görünür. Makina ve işlem durumu{" "}
         <strong>Ata</strong> ile yapılır.
       </p>
       <div className={mkStyles.filterBar} aria-label="Mal kabul filtreleri">
@@ -725,10 +725,6 @@ function MalKabulEntryModal({
     }
 
     for (const l of payloadLines) {
-      if (!l.productName) {
-        onError(`«${l.materialCode}» için ürün adı girin`);
-        return;
-      }
       if (!Number.isFinite(l.quantity) || l.quantity < 1) {
         onError(`«${l.materialCode}» için adet en az 1 tam sayı olmalı`);
         return;
@@ -786,7 +782,7 @@ function MalKabulEntryModal({
           <div className={mkStyles.linesWrap}>
             <div className={mkStyles.linesHead}>
               <span>Malzeme kodu</span>
-              <span>Ürün adı</span>
+              <span>Ürün adı (opsiyonel)</span>
               <span>Adet</span>
               <span aria-hidden="true" />
             </div>
